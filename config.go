@@ -11,7 +11,7 @@ import (
 
 // DefaultConfigEnvVars is a list of the environment variables
 // that ConfigFromEnv will search by default.
-var DefaultConfigEnvVars = []string{"flume", "LOGXI"}
+var DefaultConfigEnvVars = []string{"FLUME"}
 
 // ConfigFromEnv configures flume from environment variables.
 // It should be called from main():
@@ -21,7 +21,7 @@ var DefaultConfigEnvVars = []string{"flume", "LOGXI"}
 //         ...
 //      }
 //
-// It searches DefaultConfigEnvVars for the first environment
+// It searches envvars for the first environment
 // variable that is set, and attempts to parse the value.
 //
 // If no environment variable is set, it silently does nothing.
@@ -29,8 +29,7 @@ var DefaultConfigEnvVars = []string{"flume", "LOGXI"}
 // If an environment variable with a value is found, but parsing
 // fails, an error is printed to stdout, and the error is returned.
 //
-// The list of environment variables to be search can be configured by
-// passing arguments.
+// If envvars is empty, it defaults to DefaultConfigEnvVars.
 //
 func ConfigFromEnv(envvars ...string) error {
 	if len(envvars) == 0 {
@@ -124,7 +123,7 @@ func (c *Config) UnsetAddCaller() {
 }
 
 // EncoderConfig captures the options for encoders.
-// Type alias is here to avoid exporting zap packages.
+// Type alias to avoid exporting zap.
 type EncoderConfig zapcore.EncoderConfig
 
 type privEncCfg struct {
@@ -158,8 +157,8 @@ func (enc *EncoderConfig) UnmarshalJSON(b []byte) error {
 }
 
 // NewEncoderConfig returns an EncoderConfig with default settings.
-func NewEncoderConfig() EncoderConfig {
-	return EncoderConfig{
+func NewEncoderConfig() *EncoderConfig {
+	return &EncoderConfig{
 		MessageKey:     "msg",
 		TimeKey:        "time",
 		LevelKey:       "level",
@@ -175,7 +174,7 @@ func NewEncoderConfig() EncoderConfig {
 
 // NewDevelopmentEncoderConfig returns an EncoderConfig which is intended
 // for local development.
-func NewDevelopmentEncoderConfig() EncoderConfig {
+func NewDevelopmentEncoderConfig() *EncoderConfig {
 	cfg := NewEncoderConfig()
 	cfg.EncodeTime = JustTimeEncoder
 	cfg.EncodeDuration = zapcore.StringDurationEncoder
@@ -197,7 +196,7 @@ func JustTimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
 // Encodes levels as 3-char abbreviations in upper case.
 //
 //     encConfig := flume.EncoderConfig{}
-//     encConfig.EncodeTime = flume.JustTimeEncoder
+//     encConfig.EncodeTime = flume.AbbrLevelEncoder
 //
 func AbbrLevelEncoder(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
 	switch l {

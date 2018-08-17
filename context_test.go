@@ -1,16 +1,15 @@
-package context
+package flume
 
 import (
 	"context"
 	"github.com/stretchr/testify/assert"
-	"gitlab.protectv.local/regan/flume.git"
 	"testing"
 )
 
 func TestWithLogger(t *testing.T) {
 	ctx := context.Background()
 
-	l := flume.New("hi")
+	l := New("hi")
 	ctx2 := WithLogger(ctx, l)
 	v := ctx2.Value(loggerKey)
 	assert.EqualValues(t, l, v)
@@ -19,7 +18,7 @@ func TestWithLogger(t *testing.T) {
 func TestFromContext(t *testing.T) {
 	ctx := context.Background()
 
-	l := flume.New("hi")
+	l := New("hi")
 	ctx2 := WithLogger(ctx, l)
 	l2 := FromContext(ctx2)
 	assert.EqualValues(t, l, l2)
@@ -33,7 +32,7 @@ func TestFromContext(t *testing.T) {
 			DefaultLogger = defL
 		}()
 
-		l2 := flume.New("l2")
+		l2 := New("l2")
 		DefaultLogger = l2
 		l3 := FromContext(context.Background())
 		assert.EqualValues(t, l2, l3)

@@ -262,9 +262,9 @@ func (r *Factory) Configure(cfg Config) error {
 
 	r.SetDefaultLevel(cfg.DefaultLevel)
 
-	var encCfg EncoderConfig
+	var encCfg *EncoderConfig
 	if cfg.EncoderConfig != nil {
-		encCfg = *cfg.EncoderConfig
+		encCfg = cfg.EncoderConfig
 	} else {
 		if cfg.Development {
 			encCfg = NewDevelopmentEncoderConfig()
@@ -293,7 +293,7 @@ func (r *Factory) Configure(cfg Config) error {
 	case "term-color":
 		encoder = NewColorizedConsoleEncoder(encCfg, nil)
 	case "console":
-		encoder = zapcore.NewConsoleEncoder(zapcore.EncoderConfig(encCfg))
+		encoder = zapcore.NewConsoleEncoder((zapcore.EncoderConfig)(*encCfg))
 	case "":
 		if cfg.Development {
 			encoder = NewColorizedConsoleEncoder(encCfg, nil)

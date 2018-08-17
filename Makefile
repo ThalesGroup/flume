@@ -3,7 +3,7 @@ SHELL = bash
 PACKAGES = $$(go list ./... | grep -v /vendor/)
 BUILD_FLAGS =
 
-all: prep
+all: fmt build vet lint test
 
 build:
 	go build $(BUILD_FLAGS) $(PACKAGES)
@@ -35,52 +35,9 @@ testreport: builddir
 	go2xunit -input build/test.out -output build/test.xml
 	! grep -e "--- FAIL" -e "^FAIL" build/test.out
 
-### DOCKER
-
-COMPOSE_FILE_DEPS = docker-compose.yml
-COMPOSE_FILE_BUILD = docker-compose.build.yml
-
-DOCKER_COMPOSE := docker-compose $(if $(wildcard ${COMPOSE_FILE_DEPS}),-f ${COMPOSE_FILE_DEPS},) -f ${COMPOSE_FILE_BUILD}
-
-up:
-# brings up the projects dependencies in a compose stack
-	@if [ -f ${COMPOSE_FILE_DEPS} ]; then \
-		docker-compose -f ${COMPOSE_FILE_DEPS} up -d; \
-		if docker-compose -f ${COMPOSE_FILE_DEPS} config --services | grep wait; then \
-			docker-compose -f ${COMPOSE_FILE_DEPS} logs -f wait; \
-		fi \
-	fi
-
-down:
-# brings down the projects dependencies
-	${DOCKER_COMPOSE} down -v --remove-orphans
-
-pull:
-# pulls latest versions of dependency images
-	@if [ -f ${COMPOSE_FILE_DEPS} ]; then \
-		docker-compose -f ${COMPOSE_FILE_DEPS} pull; \
-	fi
-
-builder:
-# creates a development environment as a docker image.
-# The source of the project is copied into this image.
-# All the make targets should work inside this image.
-	${DOCKER_COMPOSE} build --pull builder
-
-ci: pull builder up
-# Full, end-to-end build.
-	${DOCKER_COMPOSE} run --rm builder make clean build vet lint testreport
-
-bash: builder
-	${DOCKER_COMPOSE} run --rm builder bash
-
-fish: builder
-	${DOCKER_COMPOSE} run --rm builder fish
-
-prep: fmt pull builder up
-# Run this before committing.
-# Formats code, and runs "make ci" in docker
-	${DOCKER_COMPOSE} run --rm builder make build vet lint test
+docker:
+	docker-compose build --pull builder
+	docker-compose run --rm builder make all
 
 vendor.update:
 	dep ensure --update

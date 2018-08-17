@@ -11,5 +11,7 @@ RUN make tools
 
 COPY ./ /go/src/gitlab.protectv.local/regan/flume.git
 
+CMD make all
+
 # unset proxy vars, just used in build
 # ENV http_proxy=

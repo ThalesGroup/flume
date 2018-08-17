@@ -10,10 +10,10 @@ import (
 
 func init() {
 	zap.RegisterEncoder("term", func(cfg zapcore.EncoderConfig) (zapcore.Encoder, error) {
-		return NewConsoleEncoder(EncoderConfig(cfg)), nil
+		return NewConsoleEncoder((*EncoderConfig)(&cfg)), nil
 	})
 	zap.RegisterEncoder("term-color", func(cfg zapcore.EncoderConfig) (zapcore.Encoder, error) {
-		return NewColorizedConsoleEncoder(EncoderConfig(cfg), nil), nil
+		return NewColorizedConsoleEncoder((*EncoderConfig)(&cfg), nil), nil
 	})
 }
 
@@ -68,7 +68,7 @@ type consoleEncoder struct {
 // Note that although the console encoder doesn't use the keys specified in the
 // encoder configuration, it will omit any element whose key is set to the empty
 // string.
-func NewConsoleEncoder(cfg EncoderConfig) Encoder {
+func NewConsoleEncoder(cfg *EncoderConfig) Encoder {
 	ltsvEncoder := NewLTSVEncoder(cfg).(*ltsvEncoder)
 	ltsvEncoder.allowNewLines = true
 	ltsvEncoder.allowTabs = true
@@ -88,7 +88,7 @@ func NewConsoleEncoder(cfg EncoderConfig) Encoder {
 //
 //     ansi.ColorCode("red")
 //
-func NewColorizedConsoleEncoder(cfg EncoderConfig, colorizer Colorizer) Encoder {
+func NewColorizedConsoleEncoder(cfg *EncoderConfig, colorizer Colorizer) Encoder {
 	e := NewConsoleEncoder(cfg).(*consoleEncoder)
 	e.colorizer = colorizer
 	if e.colorizer == nil {

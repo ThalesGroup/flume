@@ -36,7 +36,7 @@ import (
 
 func init() {
 	zap.RegisterEncoder("ltsv", func(cfg zapcore.EncoderConfig) (zapcore.Encoder, error) {
-		return NewLTSVEncoder(EncoderConfig(cfg)), nil
+		return NewLTSVEncoder((*EncoderConfig)(&cfg)), nil
 	})
 }
 
@@ -54,9 +54,9 @@ type ltsvEncoder struct {
 }
 
 // NewLTSVEncoder creates a fast, low-allocation LTSV encoder.
-func NewLTSVEncoder(cfg EncoderConfig) Encoder {
+func NewLTSVEncoder(cfg *EncoderConfig) Encoder {
 	return &ltsvEncoder{
-		EncoderConfig: &cfg,
+		EncoderConfig: cfg,
 		buf:           bufPool.Get(),
 		blankKey:      "_",
 		binaryEncoder: base64.StdEncoding.EncodeToString,

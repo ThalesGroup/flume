@@ -106,7 +106,7 @@ func TestTwo(t *testing.T) {
 	f := pkgFactory
 	config := NewEncoderConfig()
 	config.LevelKey = "l"
-	f.SetEncoder(zapcore.NewJSONEncoder(zapcore.EncoderConfig(config)))
+	f.SetEncoder(zapcore.NewJSONEncoder(zapcore.EncoderConfig(*config)))
 	f.SetAddCaller(true)
 	f.SetDefaultLevel(InfoLevel)
 	l := f.NewLogger("test")
