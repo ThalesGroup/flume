@@ -182,7 +182,7 @@ Examples of log output:
     
 "term-color"
 
-    ![term-color sample](sample.png)
+![term-color sample](sample.png)
     
 "json"
 
