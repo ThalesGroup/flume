@@ -1,6 +1,6 @@
 package flume_test
 
-import "gitlab.protectv.local/regan/flume.git"
+import "github.com/gemalto/flume"
 
 func Example() {
 

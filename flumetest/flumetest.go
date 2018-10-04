@@ -19,7 +19,7 @@ package flumetest
 import (
 	"bytes"
 	"flag"
-	"gitlab.protectv.local/regan/flume.git"
+	"github.com/gemalto/flume"
 	"io/ioutil"
 	"os"
 	"strconv"

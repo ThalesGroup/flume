@@ -1,7 +1,9 @@
 version: '3'
 services:
   builder:
+    environment:
+      CGO_ENABLED: 0
     build:
       context: .
     volumes:
-    - ./build:/go/src/gitlab.protectv.local/regan/flume.git/build
+    - ./build:/gosrc/build

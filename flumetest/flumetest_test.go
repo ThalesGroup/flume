@@ -1,7 +1,7 @@
 package flumetest
 
 import (
-	"gitlab.protectv.local/regan/flume.git"
+	"github.com/gemalto/flume"
 	"testing"
 )
 

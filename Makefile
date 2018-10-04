@@ -39,6 +39,10 @@ docker:
 	docker-compose build --pull builder
 	docker-compose run --rm builder make all
 
+fish:
+	docker-compose build --pull builder
+	docker-compose run --rm builder fish
+
 vendor.update:
 	dep ensure --update
 
