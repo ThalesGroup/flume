@@ -1,4 +1,4 @@
-module gemalto/flume
+module github.com/gemalto/flume
 
 require (
 	github.com/ansel1/merry v1.1.0
