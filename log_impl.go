@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 )
 
-var _ DeprecatedLogger = (*logger)(nil)
+var _ Logger = (*logger)(nil)
 
 type atomicLogger struct {
 	innerLoggerPtr atomic.Value
@@ -23,18 +23,6 @@ func (af *atomicLogger) set(logger *zap.SugaredLogger) {
 type logger struct {
 	*atomicLogger
 	context []interface{}
-}
-
-// Trace is an alias for Debug.  Here for API compatibility with logxi
-// deprecated: use debug
-func (l *logger) Trace(msg string, args ...interface{}) {
-	args = normalizeArgs(args)
-	if len(l.context) > 0 {
-		l.get().Debugw(msg, append(l.context, args...)...)
-	} else {
-		l.get().Debugw(msg, args...)
-
-	}
 }
 
 // Debug logs at DBG level.  args should be alternative keys and values.  keys should be strings.
@@ -59,18 +47,6 @@ func (l *logger) Info(msg string, args ...interface{}) {
 	}
 }
 
-// Warn logs at WRN level.  args should be alternative keys and values.  keys should be strings.
-// deprecated: use Info.  here for API compatibility with logxi
-func (l *logger) Warn(msg string, args ...interface{}) {
-	args = normalizeArgs(args)
-	if len(l.context) > 0 {
-		l.get().Warnw(msg, append(l.context, args...)...)
-	} else {
-		l.get().Warnw(msg, args...)
-
-	}
-}
-
 // Error logs at ERR level.  args should be alternative keys and values.  keys should be strings.
 func (l *logger) Error(msg string, args ...interface{}) {
 	args = normalizeArgs(args)
@@ -82,38 +58,9 @@ func (l *logger) Error(msg string, args ...interface{}) {
 	}
 }
 
-// Fatal logs at PNC level, and will cause a panic after logging.
-// deprecated: use error.  here for API compatibility with logxi.
-func (l *logger) Fatal(msg string, args ...interface{}) {
-	args = normalizeArgs(args)
-	if len(l.context) > 0 {
-		l.get().Panicw(msg, append(l.context, args...)...)
-	} else {
-		l.get().Panicw(msg, args...)
-
-	}
-}
-
 // IsDebug returns true if DBG level is enabled.
 func (l *logger) IsDebug() bool {
 	return l.get().Desugar().Core().Enabled(zap.DebugLevel)
-}
-
-// IsInfo returns true if INF level is enabled.
-func (l *logger) IsInfo() bool {
-	return l.get().Desugar().Core().Enabled(zap.InfoLevel)
-}
-
-// IsTrace returns true if DBG level is enabled.
-// deprecated: use debug.  Here for logxi compatibility.
-func (l *logger) IsTrace() bool {
-	return l.get().Desugar().Core().Enabled(zap.DebugLevel)
-}
-
-// IsWarn returns true if WRN level is enabled.
-// deprecated: use info.  here for logxi compat
-func (l *logger) IsWarn() bool {
-	return l.get().Desugar().Core().Enabled(zap.WarnLevel)
 }
 
 // With returns a new Logger with some context baked in.  All entries

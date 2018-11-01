@@ -1,7 +1,6 @@
 package flume
 
 import (
-	"errors"
 	"fmt"
 	"github.com/ansel1/merry"
 	"go.uber.org/zap"
@@ -129,19 +128,14 @@ func (r *Factory) newLogger(name string, info *loggerInfo) *zap.SugaredLogger {
 	return zap.New(fac, opts...).Named(name).Sugar()
 }
 
-// NewDeprecatedLogger returns a new DeprecatedLogger.
-func (r *Factory) NewDeprecatedLogger(name string) DeprecatedLogger {
+// NewLogger returns a new Logger
+func (r *Factory) NewLogger(name string) Logger {
 	r.Lock()
 	defer r.Unlock()
 	info := r.getLoggerInfo(name)
 	return &logger{
 		atomicLogger: &info.atomicLogger,
 	}
-}
-
-// NewLogger returns a new Logger
-func (r *Factory) NewLogger(name string) Logger {
-	return r.NewDeprecatedLogger(name)
 }
 
 func (r *Factory) setLevel(name string, l Level) {
@@ -188,18 +182,35 @@ func parseConfigString(s string) map[string]interface{} {
 	return m
 }
 
-// LevelsString reconfigures all the log levels.  All named loggers not in the
-// config string are reset to the default level.  If the string contains an "*"
-// entry, that will set the default log level.  The format is compatible with logxi's
-// LOGXI environment variable.  Examples:
+// LevelsString reconfigures the log level for all loggers.  Calling it with
+// an empty string will reset the default level to info, and reset all loggers
+// to use the default level.
 //
-//     *		// set all loggers to default, and set default level to ALL
-//     *=INF		// same, but set default level to INF
-//     *,sql=WRN	// set default to ALL, set sql to WRN
-//     *=INF,http=ALL	// set default to INF, set http to ALL
-//     *=INF,http	// same as above.  If name has no level, level is set to ALL
-//     *=INF,-http	// set default to INF, set http to OFF
-//     http=INF		// leave default setting unchanged.  all loggers (except "http") are still reset to default level
+// The string can contain a list of directives, separated by commas.  Directives
+// can set the default log level, and can explicitly set the log level for individual
+// loggers.
+//
+// Directives
+//
+// - Default level: Use the `*` directive to set the default log level.  Examples:
+//
+//       * 	// set the default log level to debug
+//       -* // set the default log level to off
+//
+//   If the `*` directive is omitted, the default log level will be set to info.
+// - Logger level: Use the name of the logger to set the log level for a specific
+//   logger.  Examples:
+//
+//       http		// set the http logger to debug
+//       -http		// set the http logger to off
+//       http=INF	// set the http logger to info
+//
+// Multiple directives can be included, separated by commas. Examples:
+//
+//     http         	// set http logger to debug
+//     http,sql     	// set http and sql logger to debug
+//     *,-http,sql=INF	// set the default level to debug, disable the http logger,
+//                      // and set the sql logger to info
 //
 func (r *Factory) LevelsString(s string) error {
 	m := parseConfigString(s)
@@ -209,7 +220,7 @@ func (r *Factory) LevelsString(s string) error {
 		switch t := val.(type) {
 		case bool:
 			if t {
-				levelMap[key] = AllLevel
+				levelMap[key] = DebugLevel
 			} else {
 				levelMap[key] = OffLevel
 			}
@@ -225,6 +236,8 @@ func (r *Factory) LevelsString(s string) error {
 	if defaultLevel, found := levelMap["*"]; found {
 		r.SetDefaultLevel(defaultLevel)
 		delete(levelMap, "*")
+	} else {
+		r.SetDefaultLevel(InfoLevel)
 	}
 
 	r.Lock()
@@ -298,7 +311,7 @@ func (r *Factory) Configure(cfg Config) error {
 		if cfg.Development {
 			encoder = NewColorizedConsoleEncoder(encCfg, nil)
 		} else {
-			encoder = NewLTSVEncoder(encCfg)
+			encoder = NewJSONEncoder(encCfg)
 		}
 	default:
 		return merry.Errorf("%s is not a valid encoding, must be one of: json, ltsv, term, or term-color", cfg.Encoding)
@@ -311,9 +324,9 @@ func (r *Factory) Configure(cfg Config) error {
 		addCaller = cfg.Development
 	}
 
-	// todo: break up LevelsString into parse and apply phases, so I
-	// can avoid taking the lock twice
-	r.LevelsString(cfg.Levels)
+	if err := r.LevelsString(cfg.Levels); err != nil {
+		return err
+	}
 	r.Lock()
 	defer r.Unlock()
 	r.encoder = encoder
@@ -324,25 +337,15 @@ func (r *Factory) Configure(cfg Config) error {
 
 func levelForAbbr(abbr string) (Level, error) {
 	switch strings.ToLower(abbr) {
-	case "":
-		return AllLevel, nil
 	case "off":
 		return OffLevel, nil
-	case "trc", "trace":
-		return DebugLevel, errors.New("TRC is deprecated, mapped to DEBUG")
-	case "dbg", "debug":
+	case "dbg", "debug", "", "all":
 		return DebugLevel, nil
 	case "inf", "info":
 		return InfoLevel, nil
-	case "wrn", "warn":
-		return WarnLevel, errors.New("WRN is deprecated, use INF")
 	case "err", "error":
 		return ErrorLevel, nil
-	case "pan", "panic":
-		return PanicLevel, errors.New("PAN is deprecated, use ERR")
-	case "ftl", "fatal":
-		return PanicLevel, errors.New("FTL is deprecated, use ERR, mapped to PANIC")
 	default:
-		return WarnLevel, fmt.Errorf("%s not recognized level, defaulting to warn", abbr)
+		return InfoLevel, fmt.Errorf("%s not recognized level, defaulting to info", abbr)
 	}
 }

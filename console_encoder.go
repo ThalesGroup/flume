@@ -9,10 +9,10 @@ import (
 )
 
 func init() {
-	zap.RegisterEncoder("term", func(cfg zapcore.EncoderConfig) (zapcore.Encoder, error) {
+	_ = zap.RegisterEncoder("term", func(cfg zapcore.EncoderConfig) (zapcore.Encoder, error) {
 		return NewConsoleEncoder((*EncoderConfig)(&cfg)), nil
 	})
-	zap.RegisterEncoder("term-color", func(cfg zapcore.EncoderConfig) (zapcore.Encoder, error) {
+	_ = zap.RegisterEncoder("term-color", func(cfg zapcore.EncoderConfig) (zapcore.Encoder, error) {
 		return NewColorizedConsoleEncoder((*EncoderConfig)(&cfg), nil), nil
 	})
 }
@@ -26,7 +26,7 @@ type Colorizer interface {
 // Colors is an implementation of the Colorizer interface, which assigns colors
 // to the default log levels.
 type Colors struct {
-	Debug, Info, Warn, Error string
+	Debug, Info, Error string
 }
 
 // Level implements Colorizer
@@ -39,8 +39,6 @@ func (c *Colors) Level(l Level) string {
 		return c.Debug
 	case InfoLevel:
 		return c.Info
-	case WarnLevel:
-		return c.Warn
 	default:
 		return c.Error
 	}
@@ -51,7 +49,6 @@ func (c *Colors) Level(l Level) string {
 var DefaultColors = Colors{
 	Debug: ansi.ColorCode("cyan"),
 	Info:  ansi.ColorCode("green+h"),
-	Warn:  ansi.ColorCode("yellow+bh"),
 	Error: ansi.ColorCode("red+bh"),
 }
 
@@ -163,7 +160,7 @@ func (c *consoleEncoder) EncodeEntry(ent zapcore.Entry, fields []zapcore.Field) 
 	// Add context
 	if context.Len() > 0 {
 		final.addFieldSeparator()
-		final.buf.Write(context.Bytes())
+		_, _ = final.buf.Write(context.Bytes())
 	}
 
 	// Add callsite

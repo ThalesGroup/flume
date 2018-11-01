@@ -86,7 +86,6 @@ func TestNew(t *testing.T) {
 	//}))
 	//l.Info("this just has a single, unpaired value", "red")
 	//
-	//l.Warn("This is a much longer message\nwith new lines\n in it", "stack", "this is\n a value\n\twith new\nlines and tabs")
 	//LevelsString("*")
 	//l.Debug("This is a debug")
 	//l.Error("This is an error")
@@ -116,7 +115,7 @@ func TestTwo(t *testing.T) {
 func TestBinary(t *testing.T) {
 	f := NewFactory()
 	l := f.NewLogger("")
-	f.SetDefaultLevel(AllLevel)
+	f.SetDefaultLevel(DebugLevel)
 	l.Info("binary", "bin", []byte("hello"))
 	l.Info("bear binary", []byte("hello"))
 }
@@ -127,10 +126,6 @@ func TestLevelJSON(t *testing.T) {
 	out, err := json.Marshal(l)
 	require.NoError(t, err)
 	require.Equal(t, `"ERR"`, string(out))
-
-	err = json.Unmarshal([]byte(`"WRN"`), &l)
-	require.NoError(t, err)
-	require.Equal(t, WarnLevel, l)
 
 	c := Config{}
 	err = json.Unmarshal([]byte(`{"level":"DBG"}`), &c)

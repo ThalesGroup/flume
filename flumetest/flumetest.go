@@ -66,7 +66,7 @@ func SetDefaults() error {
 	// Use defaults
 	return flume.Configure(flume.Config{
 		Development:  true,
-		DefaultLevel: flume.AllLevel,
+		DefaultLevel: flume.DebugLevel,
 	})
 }
 

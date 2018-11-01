@@ -56,7 +56,7 @@ func ConfigFromEnv(envvars ...string) error {
 //
 // The same things can be done by calling Factory methods, but
 // Configs can be unmarshaled from JSON, making it a convenient
-// way to configure most logging options from env vars, i.e.:
+// way to configure most logging options from env vars or files, i.e.:
 //
 //     err := flume.ConfigString(os.Getenv("flume"))
 //
@@ -204,12 +204,8 @@ func AbbrLevelEncoder(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
 		enc.AppendString("DBG")
 	case zapcore.InfoLevel:
 		enc.AppendString("INF")
-	case zapcore.WarnLevel:
-		enc.AppendString("WRN")
 	case zapcore.ErrorLevel:
 		enc.AppendString("ERR")
-	case zapcore.PanicLevel, zapcore.FatalLevel:
-		enc.AppendString("FTL")
 	default:
 		s := l.String()
 		if len(s) > 3 {

@@ -1,14 +1,21 @@
 package flume_test
 
-import "github.com/gemalto/flume"
+import (
+	"fmt"
+	"github.com/gemalto/flume"
+)
 
 func Example() {
 
-	flume.Configure(flume.Config{
+	err := flume.Configure(flume.Config{
 		Development:  true,
 		DefaultLevel: flume.DebugLevel,
 		Encoding:     "ltsv",
 	})
+	if err != nil {
+		fmt.Println("logging config failed:", err.Error())
+		return
+	}
 
 	log := flume.New("root")
 
