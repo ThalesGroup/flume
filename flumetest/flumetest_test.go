@@ -6,7 +6,7 @@ import (
 )
 
 func init() {
-	SetDefaults()
+	MustSetDefaults()
 }
 
 func TestStart(t *testing.T) {

@@ -33,8 +33,6 @@ func init() {
 	flag.BoolVar(&veryVerbose, "vv", false, "super verbose: Output all logs (warning: logs may be big).  -v flag must also be set.")
 	flag.StringVar(&configString, "log-config", "", "logging config: Overrides default log settings with configuration string.  Same format as flume.ConfigString(). ")
 
-	flag.Parse()
-
 	verboseEnv, _ := strconv.ParseBool(os.Getenv("FLUME_TEST_VERBOSE"))
 	veryVerbose = verboseEnv || veryVerbose
 }
@@ -68,6 +66,13 @@ func SetDefaults() error {
 		Development:  true,
 		DefaultLevel: flume.DebugLevel,
 	})
+}
+
+// MustSetDefaults calls SetDefaults, and panics on error.
+func MustSetDefaults() {
+	if err := SetDefaults(); err != nil {
+		panic(err)
+	}
 }
 
 // Start captures all logs written during the test.  If the test succeeds, the
