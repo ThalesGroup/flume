@@ -106,7 +106,7 @@ func (r *Factory) getLoggerInfo(name string) *loggerInfo {
 	return info
 }
 
-func (r *Factory) newLogger(name string, info *loggerInfo) *zap.SugaredLogger {
+func (r *Factory) newLogger(name string, info *loggerInfo) *zap.Logger {
 	var l zapcore.LevelEnabler
 	switch {
 	case info.levelEnabler != nil:
@@ -125,15 +125,20 @@ func (r *Factory) newLogger(name string, info *loggerInfo) *zap.SugaredLogger {
 	if r.addCaller {
 		opts = append(opts, zap.AddCaller())
 	}
-	return zap.New(fac, opts...).Named(name).Sugar()
+	return zap.New(fac, opts...).Named(name)
 }
 
 // NewLogger returns a new Logger
 func (r *Factory) NewLogger(name string) Logger {
+	return r.NewCore(name)
+}
+
+// NewCore returns a new Core.
+func (r *Factory) NewCore(name string) *Core {
 	r.Lock()
 	defer r.Unlock()
 	info := r.getLoggerInfo(name)
-	return &logger{
+	return &Core{
 		atomicLogger: &info.atomicLogger,
 	}
 }

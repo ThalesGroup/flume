@@ -1,8 +1,10 @@
 package flume
 
 import (
+	"bytes"
 	"encoding/json"
 	"github.com/ansel1/merry"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
 	"testing"
@@ -131,4 +133,33 @@ func TestLevelJSON(t *testing.T) {
 	err = json.Unmarshal([]byte(`{"level":"DBG"}`), &c)
 	require.NoError(t, err)
 	require.Equal(t, DebugLevel, c.DefaultLevel)
+}
+
+func TestNewCore(t *testing.T) {
+
+	c := NewCore("green")
+	assert.NotNil(t, c)
+	assert.Equal(t, pkgFactory.NewCore("green"), c)
+
+	f := NewFactory()
+	err := f.LevelsString("*=INF,http=DBG")
+	require.NoError(t, err)
+
+	c = f.NewCore("green")
+
+	assert.False(t, c.IsEnabled(DebugLevel))
+	assert.True(t, c.IsEnabled(InfoLevel))
+
+	c = f.NewCore("http")
+	assert.True(t, c.IsEnabled(DebugLevel))
+	assert.True(t, c.IsEnabled(InfoLevel))
+
+	buf := bytes.NewBuffer(nil)
+	f.SetOut(buf)
+
+	c.Log(InfoLevel, "color %v", []interface{}{"red"}, []interface{}{"size", 5})
+
+	assert.Contains(t, buf.String(), "size:5")
+	assert.Contains(t, buf.String(), "color red")
+	assert.Contains(t, buf.String(), "level:INF")
 }

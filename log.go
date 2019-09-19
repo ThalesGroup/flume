@@ -49,6 +49,11 @@ func New(name string) Logger {
 	return pkgFactory.NewLogger(name)
 }
 
+// NewCore returns a new Core
+func NewCore(name string) *Core {
+	return pkgFactory.NewCore(name)
+}
+
 // ConfigString configures the package level Factory.  The
 // string can either be a JSON-serialized Config object, or
 // just a LevelsString (see Factory.LevelsString for format).
