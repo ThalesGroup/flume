@@ -1,17 +1,12 @@
-FROM golang:1.11.1-alpine
+FROM golang:1.13-alpine
 
-# ENV http_proxy=$http_proxy
-# ENV http_proxy=http://$HTTP_PROXY
-RUN apk --no-cache add make git curl bash fish
+RUN apk --no-cache add make bash fish build-base
 
-# build tools
-COPY ./Makefile /gosrc/
-WORKDIR /gosrc
+WORKDIR /project
+
+COPY ./Makefile ./go.mod ./go.sum /project/
 RUN make tools
 
-COPY ./ /gosrc
+COPY ./ /project
 
 CMD make all
-
-# unset proxy vars, just used in build
-# ENV http_proxy=

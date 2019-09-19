@@ -1,9 +1,7 @@
 version: '3'
 services:
   builder:
-    environment:
-      CGO_ENABLED: 0
     build:
       context: .
     volumes:
-    - ./build:/gosrc/build
+    - ./build:/project/build

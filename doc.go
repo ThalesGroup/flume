@@ -49,7 +49,7 @@
 //
 // There are several package level functions which reconfigure logging output.  They control which
 // levels are discarded, which fields are included in each log entry, and how those fields are rendered,
-// and how the overall log entry is renderd (JSON, LTSV, colorized, etc).
+// and how the overall log entry is rendered (JSON, LTSV, colorized, etc).
 //
 // To configure logging settings from environment variables, call the configuration function from main():
 //

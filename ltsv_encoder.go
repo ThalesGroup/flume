@@ -35,7 +35,7 @@ import (
 )
 
 func init() {
-	zap.RegisterEncoder("ltsv", func(cfg zapcore.EncoderConfig) (zapcore.Encoder, error) {
+	_ = zap.RegisterEncoder("ltsv", func(cfg zapcore.EncoderConfig) (zapcore.Encoder, error) {
 		return NewLTSVEncoder((*EncoderConfig)(&cfg)), nil
 	})
 }
@@ -185,7 +185,7 @@ func (enc *ltsvEncoder) AppendBool(val bool) {
 func (enc *ltsvEncoder) AppendComplex128(val complex128) {
 	enc.addElementSeparator()
 	// Cast to a platform-independent, fixed-size type.
-	r, i := float64(real(val)), float64(imag(val))
+	r, i := real(val), imag(val)
 	// Because we're always in a quoted string, we can use strconv without
 	// special-casing NaN and +/-Inf.
 	enc.buf.AppendFloat(r, 64)
@@ -316,7 +316,7 @@ func (enc *ltsvEncoder) AppendUintptr(v uintptr) { enc.AppendUint64(uint64(v)) }
 func (enc *ltsvEncoder) Clone() zapcore.Encoder {
 	clone := *enc
 	clone.buf = bufPool.Get()
-	clone.buf.Write(enc.buf.Bytes())
+	_, _ = clone.buf.Write(enc.buf.Bytes())
 	return &clone
 }
 
@@ -346,7 +346,7 @@ func (enc *ltsvEncoder) EncodeEntry(ent zapcore.Entry, fields []zapcore.Field) (
 	}
 	if final.buf.Len() > 0 {
 		final.addFieldSeparator()
-		final.buf.Write(enc.buf.Bytes())
+		_, _ = final.buf.Write(enc.buf.Bytes())
 	}
 	for i := range fields {
 		fields[i].AddTo(&final)
@@ -421,6 +421,7 @@ func (enc *ltsvEncoder) appendFloat(val float64, bitSize int) {
 // safeAddString appends a string to the internal buffer.
 // If `key`, colons are replaced with underscores, and newlines and tabs are escaped
 // If not `key`, only newlines and tabs are escaped, unless configured otherwise
+//nolint:dupl
 func (enc *ltsvEncoder) safeAddString(s string, key bool) {
 	for i := 0; i < len(s); {
 		if b := s[i]; b < utf8.RuneSelf {
@@ -461,6 +462,7 @@ func (enc *ltsvEncoder) safeAddString(s string, key bool) {
 }
 
 // safeAddByteString is no-alloc equivalent of safeAddString(string(s)) for s []byte.
+//nolint:dupl
 func (enc *ltsvEncoder) safeAddByteString(s []byte, key bool) {
 	for i := 0; i < len(s); {
 		if b := s[i]; b < utf8.RuneSelf {
@@ -495,7 +497,7 @@ func (enc *ltsvEncoder) safeAddByteString(s []byte, key bool) {
 			i++
 			continue
 		}
-		enc.buf.Write(s[i : i+size])
+		_, _ = enc.buf.Write(s[i : i+size])
 		i += size
 	}
 }

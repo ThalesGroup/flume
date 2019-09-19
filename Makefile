@@ -1,6 +1,13 @@
 # Expands to list this project's go packages, excluding the vendor folder
 SHELL = bash
 PACKAGES = $$(go list ./... | grep -v /vendor/)
+
+# Setting this to 1 enables the new Docker BuildKit code when building images,
+# if available.  If buildkit is available in the local version of Docker, it
+# will speed up image builds a little.  If it's not there, or if you need to disable
+# it for some reason, everying will still work.  It's not required.
+DOCKER_BUILDKIT ?= 0
+
 BUILD_FLAGS =
 
 all: fmt build vet lint test
@@ -15,7 +22,7 @@ vet:
 	go vet $(PACKAGES)
 
 lint:
-	golint -set_exit_status $(PACKAGES)
+	golangci-lint run
 
 clean:
 	rm -rf build/*
@@ -26,7 +33,7 @@ fmt:
 test:
 	go test $(BUILD_FLAGS) $(PACKAGES)
 
-testreport: builddir
+cover: builddir
 	# runs go test in each package one at a time, generating coverage profiling
     # finally generates a combined junit test report and a test coverage report
     # note: running coverage messes up line numbers in error stacktraces
@@ -35,30 +42,26 @@ testreport: builddir
 	go2xunit -input build/test.out -output build/test.xml
 	! grep -e "--- FAIL" -e "^FAIL" build/test.out
 
-docker:
-	docker-compose build --pull builder
+builder:
+	DOCKER_BUILDKIT=${DOCKER_BUILDKIT} docker build --pull -t flume_builder .
+
+docker: builder
 	docker-compose run --rm builder make all
 
-fish:
-	docker-compose build --pull builder
+fish: builder
 	docker-compose run --rm builder fish
 
-vendor.update:
-	dep ensure --update
-
-vendor.ensure:
-	dep ensure
+update:
+	go get -u
+	go mod tidy
 
 ### TOOLS
 
-tools: buildtools
-	go get -u github.com/golang/dep/cmd/dep
-
-buildtools:
+tools:
 # installs tools used during build
 	go get -u github.com/tebeka/go2xunit
 	go get -u golang.org/x/tools/cmd/cover
-	go get -u github.com/golang/lint/golint
+	wget -O - -q https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(shell go env GOPATH)/bin $(GOLANGCI_LINT_VERSION)
 
 .PHONY: all build builddir run artifacts vet lint clean fmt test testall testreport up down pull builder runc ci bash fish image prep vendor.update vendor.ensure tools buildtools migratetool db.migrate
 

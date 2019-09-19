@@ -207,10 +207,6 @@ func (c *consoleEncoder) colorLevel(buf *buffer.Buffer, level zapcore.Level) {
 	}
 }
 
-func (c *consoleEncoder) colorBright(buf *buffer.Buffer) {
-	c.applyColor(buf, Bright)
-}
-
 func (c *consoleEncoder) applyColor(buf *buffer.Buffer, s string) {
 	if c.colorizer != nil {
 		buf.AppendString(ansi.Reset)
