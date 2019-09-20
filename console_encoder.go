@@ -26,7 +26,7 @@ type Colorizer interface {
 // Colors is an implementation of the Colorizer interface, which assigns colors
 // to the default log levels.
 type Colors struct {
-	Debug, Info, Error string
+	Debug, Info, Warn, Error string
 }
 
 // Level implements Colorizer
@@ -39,6 +39,8 @@ func (c *Colors) Level(l Level) string {
 		return c.Debug
 	case InfoLevel:
 		return c.Info
+	case Level(zapcore.WarnLevel):
+		return c.Warn
 	default:
 		return c.Error
 	}
@@ -49,6 +51,7 @@ func (c *Colors) Level(l Level) string {
 var DefaultColors = Colors{
 	Debug: ansi.ColorCode("cyan"),
 	Info:  ansi.ColorCode("green+h"),
+	Warn:  ansi.ColorCode("yellow+bh"),
 	Error: ansi.ColorCode("red+bh"),
 }
 
