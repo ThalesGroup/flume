@@ -204,8 +204,12 @@ func AbbrLevelEncoder(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
 		enc.AppendString("DBG")
 	case zapcore.InfoLevel:
 		enc.AppendString("INF")
+	case zapcore.WarnLevel:
+		enc.AppendString("WRN")
 	case zapcore.ErrorLevel:
 		enc.AppendString("ERR")
+	case zapcore.PanicLevel, zapcore.FatalLevel, zapcore.DPanicLevel:
+		enc.AppendString("FTL")
 	default:
 		s := l.String()
 		if len(s) > 3 {
