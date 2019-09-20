@@ -166,6 +166,12 @@ func (l *Core) IsDebug() bool {
 //     reqLogger := l.With("requestID", reqID)
 //
 func (l *Core) With(args ...interface{}) Logger {
+	return l.WithArgs(args...)
+}
+
+// WithArgs is the same as With() but returns the concrete type.  Useful
+// for other logging packages which wrap this one.
+func (l *Core) WithArgs(args ...interface{}) *Core {
 	l2 := l.clone()
 	switch len(args) {
 	case 0:
