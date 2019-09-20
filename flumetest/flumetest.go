@@ -26,15 +26,15 @@ import (
 	"testing"
 )
 
-var veryVerbose bool
-var configString string
+var Verbose bool
+var ConfigString string
 
 func init() {
-	flag.BoolVar(&veryVerbose, "vv", false, "super verbose: Output all logs (warning: logs may be big).  -v flag must also be set.")
-	flag.StringVar(&configString, "log-config", "", "logging config: Overrides default log settings with configuration string.  Same format as flume.ConfigString(). ")
+	flag.BoolVar(&Verbose, "vv", false, "super verbose: Output all logs (warning: logs may be big).  -v flag must also be set.")
+	flag.StringVar(&ConfigString, "log-config", "", "logging config: Overrides default log settings with configuration string.  Same format as flume.ConfigString(). ")
 
-	verboseEnv, _ := strconv.ParseBool(os.Getenv("FLUME_TEST_VERBOSE"))
-	veryVerbose = verboseEnv || veryVerbose
+	Verbose, _ = strconv.ParseBool(os.Getenv("FLUME_TEST_VERBOSE"))
+	ConfigString = os.Getenv("FLUME_TEST_CONFIG_STRING")
 }
 
 // SetDefaults sets default options on the package-level flume factory which are appropriate for tests.
@@ -50,15 +50,12 @@ func init() {
 //
 // Uses a colorized console encoder with abbreviated times.
 func SetDefaults() error {
-	if !veryVerbose {
+	if !Verbose {
 		flume.SetOut(ioutil.Discard)
 	}
 
-	if configString == "" {
-		configString = os.Getenv("FLUME_TEST_CONFIG_STRING")
-	}
-	if configString != "" {
-		return flume.ConfigString(configString)
+	if ConfigString != "" {
+		return flume.ConfigString(ConfigString)
 	}
 
 	// Use defaults
@@ -91,7 +88,7 @@ func MustSetDefaults() {
 // output to its original setting.
 func Start(t testing.TB) func() {
 	var revert func()
-	if veryVerbose {
+	if Verbose {
 		revert = flume.SetOut(flume.LogFuncWriter(t.Log, true))
 	} else {
 		buf := bytes.NewBuffer(nil)
