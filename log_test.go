@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -150,6 +151,7 @@ func TestNewCore(t *testing.T) {
 	assert.False(t, c.IsEnabled(DebugLevel))
 	assert.True(t, c.IsEnabled(InfoLevel))
 
+	require.NoError(t, err)
 	c = f.NewCore("http")
 	assert.True(t, c.IsEnabled(DebugLevel))
 	assert.True(t, c.IsEnabled(InfoLevel))
@@ -162,4 +164,58 @@ func TestNewCore(t *testing.T) {
 	assert.Contains(t, buf.String(), "size:5")
 	assert.Contains(t, buf.String(), "color red")
 	assert.Contains(t, buf.String(), "level:INF")
+	assert.Contains(t, buf.String(), "name:http")
+
+}
+
+func TestAddCaller(t *testing.T) {
+	f := NewFactory()
+	f.SetDefaultLevel(DebugLevel)
+	f.SetAddCaller(true)
+
+	c := f.NewCore("green")
+
+	buf := bytes.NewBuffer(nil)
+	f.SetOut(buf)
+
+	c.Log(InfoLevel, "asdf", nil, nil)
+	assert.Contains(t, buf.String(), "caller:flume/log_test.go:")
+
+	buf.Reset()
+
+	c.Debug("asdf")
+	assert.Contains(t, buf.String(), "caller:flume/log_test.go:")
+
+	buf.Reset()
+
+	c.Info("asdf")
+	assert.Contains(t, buf.String(), "caller:flume/log_test.go:")
+
+	buf.Reset()
+
+	c.Error("asdf")
+	assert.Contains(t, buf.String(), "caller:flume/log_test.go:")
+
+	buf.Reset()
+
+	logSomething(c)
+	assert.Contains(t, buf.String(), "caller:"+logSomethingFile+":"+strconv.Itoa(logSomethingLine))
+}
+
+func TestAddCallerSkip(t *testing.T) {
+	f := NewFactory()
+	f.SetDefaultLevel(DebugLevel)
+	f.SetAddCaller(true)
+
+	c := f.NewCore("green")
+
+	buf := bytes.NewBuffer(nil)
+	f.SetOut(buf)
+
+	logSomething(c)
+	assert.Contains(t, buf.String(), "caller:"+logSomethingFile+":"+strconv.Itoa(logSomethingLine))
+
+	c = f.NewCore("green", AddCallerSkip(1))
+	logSomething(c)
+	assert.Contains(t, buf.String(), "caller:flume/log_test.go:")
 }

@@ -5,37 +5,62 @@ import (
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"runtime"
 	"sync/atomic"
+	"time"
 )
 
 var _ Logger = (*Core)(nil)
 
-type atomicLogger struct {
+type atomicInnerCore struct {
 	innerLoggerPtr atomic.Value
 }
 
-func (af *atomicLogger) get() *zap.Logger {
-	return af.innerLoggerPtr.Load().(*zap.Logger)
+func (af *atomicInnerCore) get() *innerCore {
+	return af.innerLoggerPtr.Load().(*innerCore)
 }
 
-func (af *atomicLogger) set(logger *zap.Logger) {
-	af.innerLoggerPtr.Store(logger)
+func (af *atomicInnerCore) set(ic *innerCore) {
+	af.innerLoggerPtr.Store(ic)
+}
+
+// innerCore holds state which can be reconfigured at the factory level.
+// if these settings are changed in the factory, the factory builds new
+// innerCore instances, and atomically injects them into all existing loggers.
+type innerCore struct {
+	name string
+	zapcore.Core
+	addCaller   bool
+	errorOutput zapcore.WriteSyncer
 }
 
 // Core is the concrete implementation of Logger.  It has some additional
 // lower-level methods which can be used by other logging packages which wrap
 // flume, to build alternate logging interfaces.
 type Core struct {
-	*atomicLogger
-	context []zap.Field
+	*atomicInnerCore
+	context    []zap.Field
+	callerSkip int
 }
 
 // Log is the core logging method, used by the convenience methods Debug(), Info(), and Error().
 //
 // Returns true if the log was actually logged.
+//
+// AddCaller option will report the caller of this method.  If wrapping this, be sure to
+// use the AddCallerSkip option.
 func (l *Core) Log(lvl Level, template string, fmtArgs, context []interface{}) bool {
-	raw := l.get()
-	if !raw.Core().Enabled(zapcore.Level(lvl)) {
+	// call another method, just to add a caller to the call stack, so the
+	// add caller option resolves the right caller in the stack
+	return l.log(lvl, template, fmtArgs, context)
+}
+
+// log must be called directly from one of the public methods to make the addcaller
+// resolution resolve the caller of the public method.
+func (l *Core) log(lvl Level, template string, fmtArgs, context []interface{}) bool {
+	c := l.get()
+
+	if !c.Enabled(zapcore.Level(lvl)) {
 		return false
 	}
 
@@ -46,17 +71,39 @@ func (l *Core) Log(lvl Level, template string, fmtArgs, context []interface{}) b
 		msg = fmt.Sprintf(template, fmtArgs...)
 	}
 
-	if ce := raw.Check(zapcore.Level(lvl), msg); ce != nil {
-		ce.Write(append(l.context, l.sweetenFields(context)...)...)
-		return true
+	// check must always be called directly by a method in the Logger interface
+	// (e.g., Log, Info, Debug).
+	const callerSkipOffset = 2
+
+	// Create basic checked entry thru the core; this will be non-nil if the
+	// log message will actually be written somewhere.
+	ent := zapcore.Entry{
+		LoggerName: c.name,
+		Time:       time.Now(),
+		Level:      zapcore.Level(lvl),
+		Message:    msg,
+	}
+	ce := c.Check(ent, nil)
+	if ce == nil {
+		return false
 	}
 
-	return false
+	// Thread the error output through to the CheckedEntry.
+	ce.ErrorOutput = c.errorOutput
+	if c.addCaller {
+		ce.Entry.Caller = zapcore.NewEntryCaller(runtime.Caller(l.callerSkip + callerSkipOffset))
+		if !ce.Entry.Caller.Defined {
+			_, _ = fmt.Fprintf(c.errorOutput, "%v Logger.check error: failed to get caller\n", time.Now().UTC())
+		}
+	}
+
+	ce.Write(append(l.context, l.sweetenFields(context)...)...)
+	return true
 }
 
 // IsEnabled returns true if the specified level is enabled.
 func (l *Core) IsEnabled(lvl Level) bool {
-	return l.get().Core().Enabled(zapcore.Level(lvl))
+	return l.get().Enabled(zapcore.Level(lvl))
 }
 
 const (
@@ -90,7 +137,7 @@ func (l *Core) sweetenFields(args []interface{}) []zap.Field {
 
 		// Make sure this element isn't a dangling key.
 		if i == len(args)-1 {
-			l.get().Error(_oddNumberErrMsg, zap.Any("ignored", args[i]))
+			l.Error(_oddNumberErrMsg, zap.Any("ignored", args[i]))
 			break
 		}
 
@@ -111,7 +158,7 @@ func (l *Core) sweetenFields(args []interface{}) []zap.Field {
 
 	// If we encountered any invalid key-value pairs, log an error.
 	if len(invalid) > 0 {
-		l.get().Error(_nonStringKeyErrMsg, zap.Array("invalid", invalid))
+		l.Error(_nonStringKeyErrMsg, zap.Array("invalid", invalid))
 	}
 	return fields
 }
@@ -140,17 +187,17 @@ func (ps invalidPairs) MarshalLogArray(enc zapcore.ArrayEncoder) error {
 
 // Debug logs at DBG level.  args should be alternative keys and values.  keys should be strings.
 func (l *Core) Debug(msg string, args ...interface{}) {
-	l.Log(DebugLevel, msg, nil, args)
+	l.log(DebugLevel, msg, nil, args)
 }
 
 // Info logs at INF level. args should be alternative keys and values.  keys should be strings.
 func (l *Core) Info(msg string, args ...interface{}) {
-	l.Log(InfoLevel, msg, nil, args)
+	l.log(InfoLevel, msg, nil, args)
 }
 
 // Error logs at ERR level.  args should be alternative keys and values.  keys should be strings.
 func (l *Core) Error(msg string, args ...interface{}) {
-	l.Log(ErrorLevel, msg, nil, args)
+	l.log(ErrorLevel, msg, nil, args)
 }
 
 // IsDebug returns true if DBG level is enabled.

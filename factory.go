@@ -12,8 +12,8 @@ import (
 )
 
 type loggerInfo struct {
-	levelEnabler zapcore.LevelEnabler
-	atomicLogger atomicLogger
+	levelEnabler    zapcore.LevelEnabler
+	atomicInnerCore atomicInnerCore
 }
 
 // Factory is a log management core.  It spawns loggers.  The Factory has
@@ -92,7 +92,7 @@ func (r *Factory) getOut() io.Writer {
 
 func (r *Factory) refreshLoggers() {
 	for name, info := range r.loggers {
-		info.atomicLogger.set(r.newLogger(name, info))
+		info.atomicInnerCore.set(r.newInnerCore(name, info))
 	}
 }
 
@@ -101,12 +101,12 @@ func (r *Factory) getLoggerInfo(name string) *loggerInfo {
 	if !found {
 		info = &loggerInfo{}
 		r.loggers[name] = info
-		info.atomicLogger.set(r.newLogger(name, info))
+		info.atomicInnerCore.set(r.newInnerCore(name, info))
 	}
 	return info
 }
 
-func (r *Factory) newLogger(name string, info *loggerInfo) *zap.Logger {
+func (r *Factory) newInnerCore(name string, info *loggerInfo) *innerCore {
 	var l zapcore.LevelEnabler
 	switch {
 	case info.levelEnabler != nil:
@@ -114,18 +114,18 @@ func (r *Factory) newLogger(name string, info *loggerInfo) *zap.Logger {
 	default:
 		l = r.defaultLevel
 	}
-	fac := zapcore.NewCore(
+	zc := zapcore.NewCore(
 		r.getEncoder(),
 		zapcore.AddSync(r.getOut()),
 		l,
 	)
 
-	opts := []zap.Option{zap.AddCallerSkip(1)}
-
-	if r.addCaller {
-		opts = append(opts, zap.AddCaller())
+	return &innerCore{
+		name:        name,
+		Core:        zc,
+		addCaller:   r.addCaller,
+		errorOutput: zapcore.AddSync(os.Stderr),
 	}
-	return zap.New(fac, opts...).Named(name)
 }
 
 // NewLogger returns a new Logger
@@ -134,13 +134,17 @@ func (r *Factory) NewLogger(name string) Logger {
 }
 
 // NewCore returns a new Core.
-func (r *Factory) NewCore(name string) *Core {
+func (r *Factory) NewCore(name string, options ...CoreOption) *Core {
 	r.Lock()
 	defer r.Unlock()
 	info := r.getLoggerInfo(name)
-	return &Core{
-		atomicLogger: &info.atomicLogger,
+	core := &Core{
+		atomicInnerCore: &info.atomicInnerCore,
 	}
+	for _, opt := range options {
+		opt.apply(core)
+	}
+	return core
 }
 
 func (r *Factory) setLevel(name string, l Level) {
