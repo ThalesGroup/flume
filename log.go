@@ -50,8 +50,8 @@ func New(name string) Logger {
 }
 
 // NewCore returns a new Core
-func NewCore(name string) *Core {
-	return pkgFactory.NewCore(name)
+func NewCore(name string, options ...CoreOption) *Core {
+	return pkgFactory.NewCore(name, options...)
 }
 
 // ConfigString configures the package level Factory.  The
