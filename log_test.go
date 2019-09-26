@@ -219,3 +219,22 @@ func TestAddCallerSkip(t *testing.T) {
 	logSomething(c)
 	assert.Contains(t, buf.String(), "caller:flume/log_test.go:")
 }
+
+func TestSingleArgument(t *testing.T) {
+	f := NewFactory()
+	f.SetDefaultLevel(DebugLevel)
+	f.SetAddCaller(true)
+
+	c := f.NewCore("green")
+
+	buf := bytes.NewBuffer(nil)
+	f.SetOut(buf)
+
+	c.Info("green", "red")
+	assert.NotContains(t, buf.String(), _oddNumberErrMsg)
+
+	buf.Reset()
+
+	c.Info("green", "color", "red", "yellow")
+	assert.Contains(t, buf.String(), _oddNumberErrMsg)
+}

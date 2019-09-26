@@ -133,6 +133,7 @@ func (l *Core) sweetenFields(args []interface{}) []zap.Field {
 			// passed a bare arg with no key.  We'll handle this
 			// as a special case
 			fields = append(fields, zap.Any("", args[0]))
+			return fields
 		}
 
 		// Make sure this element isn't a dangling key.
