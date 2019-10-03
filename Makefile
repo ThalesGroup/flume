@@ -31,7 +31,7 @@ fmt:
 	go fmt $(PACKAGES)
 
 test:
-	go test $(BUILD_FLAGS) $(PACKAGES)
+	go test -race $(BUILD_FLAGS) $(PACKAGES)
 
 cover: builddir
 	# runs go test in each package one at a time, generating coverage profiling

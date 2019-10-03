@@ -23,6 +23,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strconv"
+	"sync"
 	"testing"
 )
 
@@ -87,12 +88,50 @@ func MustSetDefaults() {
 // Be sure to call the returned function at the end of the test to reset the log
 // output to its original setting.
 func Start(t testing.TB) func() {
+	// delegate to an inner method which is testable
+	return start(t)
+}
+
+type lockedBuf struct {
+	buf *bytes.Buffer
+	sync.Mutex
+}
+
+func (l *lockedBuf) Write(p []byte) (n int, err error) {
+	l.Lock()
+	defer l.Unlock()
+	return l.buf.Write(p)
+}
+
+func (l *lockedBuf) Len() int {
+	l.Lock()
+	defer l.Unlock()
+	return l.buf.Len()
+}
+
+func (l *lockedBuf) String() string {
+	l.Lock()
+	defer l.Unlock()
+	return l.buf.String()
+}
+
+type testingTB interface {
+	Failed() bool
+	Log(args ...interface{})
+}
+
+func start(t testingTB) func() {
 	var revert func()
 	if Verbose {
 		revert = flume.SetOut(flume.LogFuncWriter(t.Log, true))
 	} else {
-		buf := bytes.NewBuffer(nil)
-		revertOut := flume.SetOut(buf)
+		// need to use a synchronized version of buf, since
+		// logs may be written on other goroutines than this one,
+		// and bytes.Buffer is not concurrent safe.
+		buf := lockedBuf{
+			buf: bytes.NewBuffer(nil),
+		}
+		revertOut := flume.SetOut(&buf)
 		revert = func() {
 			revertOut()
 			// make sure that if the test panics or fails, we dump the logs
