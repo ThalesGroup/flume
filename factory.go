@@ -333,8 +333,10 @@ func (r *Factory) Configure(cfg Config) error {
 		addCaller = cfg.Development
 	}
 
-	if err := r.LevelsString(cfg.Levels); err != nil {
-		return err
+	if cfg.Levels != "" {
+		if err := r.LevelsString(cfg.Levels); err != nil {
+			return err
+		}
 	}
 	r.Lock()
 	defer r.Unlock()
