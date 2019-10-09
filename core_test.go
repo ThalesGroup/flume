@@ -20,3 +20,31 @@ func TestSweetenFields(t *testing.T) {
 	fields = c.sweetenFields([]interface{}{err})
 	assert.Equal(t, []zap.Field{zap.NamedError("error", err)}, fields)
 }
+
+func TestCore_IsDebug(t *testing.T) {
+	f := NewFactory()
+	f.SetDefaultLevel(InfoLevel)
+
+	l := f.NewLogger("asdf")
+	assert.False(t, l.IsDebug())
+	f.SetDefaultLevel(DebugLevel)
+	assert.True(t, l.IsDebug())
+	f.SetDefaultLevel(ErrorLevel)
+	assert.False(t, l.IsDebug())
+	f.SetLevel("asdf", DebugLevel)
+	assert.True(t, l.IsDebug())
+}
+
+func TestCore_IsInfo(t *testing.T) {
+	f := NewFactory()
+	f.SetDefaultLevel(ErrorLevel)
+
+	l := f.NewLogger("asdf")
+	assert.False(t, l.IsInfo())
+	f.SetDefaultLevel(InfoLevel)
+	assert.True(t, l.IsInfo())
+	f.SetDefaultLevel(ErrorLevel)
+	assert.False(t, l.IsInfo())
+	f.SetLevel("asdf", DebugLevel)
+	assert.True(t, l.IsInfo())
+}

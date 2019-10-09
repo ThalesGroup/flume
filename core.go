@@ -208,6 +208,11 @@ func (l *Core) IsDebug() bool {
 	return l.IsEnabled(DebugLevel)
 }
 
+// IsDebug returns true if INF level is enabled
+func (l *Core) IsInfo() bool {
+	return l.IsEnabled(InfoLevel)
+}
+
 // With returns a new Logger with some context baked in.  All entries
 // logged with the new logger will include this context.
 //

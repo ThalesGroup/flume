@@ -20,6 +20,7 @@ type (
 		Error(msg string, args ...interface{})
 
 		IsDebug() bool
+		IsInfo() bool
 
 		// With creates a new Logger with some context already attached.  All
 		// entries logged with the child logger will include this context.
