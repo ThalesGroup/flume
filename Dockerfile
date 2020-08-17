@@ -1,12 +1,12 @@
-FROM golang:1.13-alpine
+FROM golang:1.14-alpine
 
 RUN apk --no-cache add make bash fish build-base
 
-WORKDIR /project
+WORKDIR /flume
 
-COPY ./Makefile ./go.mod ./go.sum /project/
+COPY ./Makefile ./go.mod ./go.sum /flume/
 RUN make tools
 
-COPY ./ /project
+COPY ./ /flume
 
 CMD make all
