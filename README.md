@@ -206,3 +206,14 @@ The implementation is a wrapper around zap.   zap does levels, structured logs, 
 zap doesn't do centralized, global configuration, so this package
 adds that by maintaining an internal registry of all loggers, and using the sync.atomic stuff to swap out
 levels and writers in a thread safe way.
+
+Contributing
+------------
+
+To build, be sure to have a recent go SDK, and make.  Run `make tools` to install other dependencies.  Then run `make`.
+
+There is also a dockerized build, which only requires make and docker-compose: `make docker`.  You can also
+do `make fish` or `make bash` to shell into the docker build container.
+
+Merge requests are welcome!  Before submitting, please run `make` and make sure all tests pass and there are
+no linter findings.
