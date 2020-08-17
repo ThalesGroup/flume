@@ -1,4 +1,4 @@
-flume
+flume [![GoDoc](https://godoc.org/github.com/gemalto/flume?status.png)](https://godoc.org/github.com/gemalto/flume) [![Go Report Card](https://goreportcard.com/badge/github.com/gemalto/flume)](https://goreportcard.com/report/gemalto/flume) [![Build](https://github.com/gemalto/flume/workflows/Build/badge.svg)](https://github.com/gemalto/flume/actions?query=branch%3Amaster+workflow%3ABuild+)
 =====
 
 flume is a logging package, build on top of [zap](https://github.com/uber-go/zap).  It's structured and leveled logs, like zap/logrus/etc.
