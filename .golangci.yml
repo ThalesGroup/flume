@@ -44,7 +44,7 @@ run:
   # If invoked with -mod=vendor, the go command assumes that the vendor
   # directory holds the correct copies of dependencies and ignores
   # the dependency descriptions in go.mod.
-  modules-download-mode: vendor
+  # modules-download-mode:
 
 
 # output configuration options
@@ -185,41 +185,44 @@ linters-settings:
 #        sizeThreshold: 32
 
 linters:
+  # to try out individual linters: golangci-lint run -E gocyclo,gosimple
   enable:
-    - govet
-    - errcheck
     - staticcheck
-    - unused
-    - gosimple
-    - structcheck
-    - varcheck
-    - ineffassign
     - deadcode
-    - typecheck
-    - bodyclose
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - structcheck
+##    - typecheck          # redundant?  compiler does this
+    - unused
+    - varcheck
+##    - bodyclose          # its all false positives with requester and sling, which both close the body already
+    - depguard
+##    - dogsled            # checks for too many blank identifiers.  don't care
+    - dupl
+##    - funlen              # checks function length.  don't care
+##    - gochecknoglobals    # too common
+    - gochecknoinits
+    - goconst
+    - gocritic
+##    - gocyclo             # checks cyclomatic complexity.  don't care
+##    - godox               # checks for TODO comments.  not standardized
+##    - gofmt               # checks code is formatted, handled by make prep
+##    - goimports           # checks import order.  We're not using goimports
     - golint
-    - stylecheck
     - gosec
     - interfacer
-    - unconvert
-    - dupl
-    - goconst
-    - gofmt
+##    - lll                 # checks line length.  not enforced
+##    - maligned            # optimizies struct field order, but structs are usually ordered for legibility
     - misspell
     - nakedret
+#    - prealloc            # slice optimizations, but promotes too much premature optimization
     - scopelint
-    - gocritic
-#  enable-all: true
-#  disable:
-#    - gochecknoinits     # we're intentionally using init() functions
-#    - goimports          # we're not using goimports to format imports, so this fails a lot
-#    - gocyclo            # not required for check in.  If interested, run manually: golangci-lint run -E gocyclo
-#    - maligned           # many structs are ordered for readability.  If interested, run manually: golangci-lint run -E maligned
-#    - depguard           # very slow, probably a bug (should be fast).
-#    - lll                # line length is not enforced
-#    - unparam            # too many false positives
-#    - prealloc           # probably promotes premature optimization.
-#    - gochecknoglobals   # too common
+    - stylecheck
+    - unconvert
+##    - unparam            # too many false positives
+##    - whitespace         # not enforced
   disable-all: true
 #  presets:
 #    - bugs

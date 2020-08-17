@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+//nolint:gochecknoinits
 func init() {
 	_ = zap.RegisterEncoder("term", func(cfg zapcore.EncoderConfig) (zapcore.Encoder, error) {
 		return NewConsoleEncoder((*EncoderConfig)(&cfg)), nil

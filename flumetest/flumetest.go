@@ -30,6 +30,7 @@ import (
 var Verbose bool
 var ConfigString string
 
+//nolint:gochecknoinits
 func init() {
 	flag.BoolVar(&Verbose, "vv", false, "super verbose: Output all logs (warning: logs may be big).  -v flag must also be set.")
 	flag.StringVar(&ConfigString, "log-config", "", "logging config: Overrides default log settings with configuration string.  Same format as flume.ConfigString(). ")

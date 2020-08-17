@@ -34,6 +34,7 @@ import (
 	"strings"
 )
 
+//nolint:gochecknoinits
 func init() {
 	_ = zap.RegisterEncoder("ltsv", func(cfg zapcore.EncoderConfig) (zapcore.Encoder, error) {
 		return NewLTSVEncoder((*EncoderConfig)(&cfg)), nil

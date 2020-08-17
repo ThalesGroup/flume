@@ -40,7 +40,7 @@ tidy:
 	go mod tidy
 
 update:
-	go get -u
+	go get -u ./...
 	go mod tidy
 
 ### TOOLS
