@@ -32,6 +32,7 @@ type innerCore struct {
 	zapcore.Core
 	addCaller   bool
 	errorOutput zapcore.WriteSyncer
+	hooks       []HookFunc
 }
 
 // Core is the concrete implementation of Logger.  It has some additional
@@ -41,6 +42,8 @@ type Core struct {
 	*atomicInnerCore
 	context    []zap.Field
 	callerSkip int
+	// these are logger-scoped hooks, which only hook into this particular logger
+	hooks []HookFunc
 }
 
 // Log is the core logging method, used by the convenience methods Debug(), Info(), and Error().
@@ -94,10 +97,27 @@ func (l *Core) log(lvl Level, template string, fmtArgs, context []interface{}) b
 		ce.Entry.Caller = zapcore.NewEntryCaller(runtime.Caller(l.callerSkip + callerSkipOffset))
 		if !ce.Entry.Caller.Defined {
 			_, _ = fmt.Fprintf(c.errorOutput, "%v Logger.check error: failed to get caller\n", time.Now().UTC())
+			_ = ce.ErrorOutput.Sync()
 		}
 	}
 
-	ce.Write(append(l.context, l.sweetenFields(context)...)...)
+	fields := append(l.context, l.sweetenFields(context)...) //nolint:gocritic
+
+	// execute global hooks, which might modify the fields
+	for i := range c.hooks {
+		if f := c.hooks[i](ce, fields); f != nil {
+			fields = f
+		}
+	}
+
+	// execute logger hooks
+	for i := range l.hooks {
+		if f := l.hooks[i](ce, fields); f != nil {
+			fields = f
+		}
+	}
+
+	ce.Write(fields...)
 	return true
 }
 

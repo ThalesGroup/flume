@@ -31,6 +31,8 @@ type Factory struct {
 	sync.Mutex
 
 	addCaller bool
+
+	hooks []HookFunc
 }
 
 // Encoder serializes log entries.  Re-exported from zap for now to avoid exporting zap.
@@ -125,6 +127,7 @@ func (r *Factory) newInnerCore(name string, info *loggerInfo) *innerCore {
 		Core:        zc,
 		addCaller:   r.addCaller,
 		errorOutput: zapcore.AddSync(os.Stderr),
+		hooks:       r.hooks,
 	}
 }
 
@@ -165,6 +168,40 @@ func (r *Factory) SetLevel(name string, l Level) {
 // assigned to them
 func (r *Factory) SetDefaultLevel(l Level) {
 	r.defaultLevel.SetLevel(zapcore.Level(l))
+}
+
+type Entry = zapcore.Entry
+type CheckedEntry = zapcore.CheckedEntry
+type Field = zapcore.Field
+
+// HookFunc adapts a single function to the Hook interface.
+type HookFunc func(*CheckedEntry, []Field) []Field
+
+// Hooks adds functions which are called before a log entry is encoded.  The hook function
+// is given the entry and the total set of fields to be logged.  The set of fields which are
+// returned are then logged.  Hook functions can return a modified set of fields, or just return
+// the unaltered fields.
+//
+// The Entry is not modified.  It is purely informational.
+//
+// If a hook returns an error, that error is logged, but the in-flight log entry
+// will proceed with the original set of fields.
+//
+// These global hooks will be injected into all loggers owned by this factory.  They will
+// execute before any hooks installed in individual loggers.
+func (r *Factory) Hooks(hooks ...HookFunc) {
+	r.Lock()
+	defer r.Unlock()
+	r.hooks = append(r.hooks, hooks...)
+	r.refreshLoggers()
+}
+
+// ClearHooks removes all hooks.
+func (r *Factory) ClearHooks() {
+	r.Lock()
+	defer r.Unlock()
+	r.hooks = nil
+	r.refreshLoggers()
 }
 
 func parseConfigString(s string) map[string]interface{} {

@@ -383,17 +383,19 @@ func (enc *ltsvEncoder) addFieldSeparator() {
 	}
 	if enc.nestingLevel > 0 {
 		enc.addElementSeparator()
-	} else {
-		lastByte := enc.buf.Bytes()[last]
-		if enc.lastElementWasMultiline {
-			if lastByte != '\n' && lastByte != '\r' {
-				// make sure the last line terminated with a newline
-				enc.buf.AppendByte('\n')
-			}
-			enc.lastElementWasMultiline = false
-		} else if lastByte != '\t' {
-			enc.buf.AppendByte('\t')
+		enc.skipNextElementSeparator = true
+		return
+	}
+
+	lastByte := enc.buf.Bytes()[last]
+	if enc.lastElementWasMultiline {
+		if lastByte != '\n' && lastByte != '\r' {
+			// make sure the last line terminated with a newline
+			enc.buf.AppendByte('\n')
 		}
+		enc.lastElementWasMultiline = false
+	} else if lastByte != '\t' {
+		enc.buf.AppendByte('\t')
 	}
 	enc.skipNextElementSeparator = true
 }

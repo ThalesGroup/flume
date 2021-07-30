@@ -21,3 +21,11 @@ func AddCallerSkip(skip int) CoreOption {
 		c.callerSkip += skip
 	})
 }
+
+// AddHooks adds hooks to this logger core.  These will only execute on this
+// logger, after the global hooks.
+func AddHooks(hooks ...HookFunc) CoreOption {
+	return coreOptionFunc(func(core *Core) {
+		core.hooks = append(core.hooks, hooks...)
+	})
+}

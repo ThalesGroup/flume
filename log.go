@@ -110,6 +110,16 @@ func SetEncoder(e Encoder) {
 	pkgFactory.SetEncoder(e)
 }
 
+// Hooks adds hooks to the package-level Factory.
+func Hooks(hooks ...HookFunc) {
+	pkgFactory.Hooks(hooks...)
+}
+
+// ClearHooks clears all hooks from the package-level Factory.
+func ClearHooks() {
+	pkgFactory.ClearHooks()
+}
+
 // SetDevelopmentDefaults sets useful default settings on the package-level Factory
 // which are appropriate for a development setting.  Default log level is
 // set to INF, all loggers are reset to the default level, call site information
