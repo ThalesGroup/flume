@@ -8,7 +8,7 @@
 // Additionally, at the start of each test, the following will capture logs during the test
 // and dump them to the t.Log() function if the test fails:
 //
-//     defer flumetest.Start(t)()
+//	defer flumetest.Start(t)()
 //
 // The deferred function call resets the log output.
 //
@@ -46,7 +46,7 @@ func init() {
 // This will log at all levels, in all tests, which will be *very* verbose.  Use
 // with caution:
 //
-//     $ go test -v -vv
+//	$ go test -v -vv
 //
 // Log output can also be enabled by setting the FLUME_TEST_VERBOSE environment variable.
 //
@@ -81,10 +81,10 @@ func MustSetDefaults() {
 // If the -vv flag, or FLUME_TEST_VERBOSE env var is set, logs are forwarded
 // directly to t.Log() as they occur.
 //
-//     func TestSomething(t *testing.T) {
-//       defer flumetest.Start(t)()
-//       ...
-//     }
+//	func TestSomething(t *testing.T) {
+//	  defer flumetest.Start(t)()
+//	  ...
+//	}
 //
 // Be sure to call the returned function at the end of the test to reset the log
 // output to its original setting.

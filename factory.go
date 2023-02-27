@@ -236,28 +236,28 @@ func parseConfigString(s string) map[string]interface{} {
 // can set the default log level, and can explicitly set the log level for individual
 // loggers.
 //
-// Directives
+// # Directives
 //
 // - Default level: Use the `*` directive to set the default log level.  Examples:
 //
-//       * 	// set the default log level to debug
-//       -* // set the default log level to off
+//   - // set the default log level to debug
+//     -* // set the default log level to off
 //
-//   If the `*` directive is omitted, the default log level will be set to info.
-// - Logger level: Use the name of the logger to set the log level for a specific
-//   logger.  Examples:
+//     If the `*` directive is omitted, the default log level will be set to info.
 //
-//       http		// set the http logger to debug
-//       -http		// set the http logger to off
-//       http=INF	// set the http logger to info
+//   - Logger level: Use the name of the logger to set the log level for a specific
+//     logger.  Examples:
+//
+//     http		// set the http logger to debug
+//     -http		// set the http logger to off
+//     http=INF	// set the http logger to info
 //
 // Multiple directives can be included, separated by commas. Examples:
 //
-//     http         	// set http logger to debug
-//     http,sql     	// set http and sql logger to debug
-//     *,-http,sql=INF	// set the default level to debug, disable the http logger,
-//                      // and set the sql logger to info
-//
+//	http         	// set http logger to debug
+//	http,sql     	// set http and sql logger to debug
+//	*,-http,sql=INF	// set the default level to debug, disable the http logger,
+//	                 // and set the sql logger to info
 func (r *Factory) LevelsString(s string) error {
 	m := parseConfigString(s)
 	levelMap := map[string]Level{}

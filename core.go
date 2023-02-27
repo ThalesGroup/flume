@@ -238,8 +238,7 @@ func (l *Core) IsInfo() bool {
 //
 // args should be alternative keys and values.  keys should be strings.
 //
-//     reqLogger := l.With("requestID", reqID)
-//
+//	reqLogger := l.With("requestID", reqID)
 func (l *Core) With(args ...interface{}) Logger {
 	return l.WithArgs(args...)
 }
