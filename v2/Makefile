@@ -28,13 +28,13 @@ cover: builddir
 	go tool cover -html=build/coverage.out -o build/coverage.html
 
 builder:
-	docker-compose build --pull builder
+	docker compose build --pull builder
 
 docker: builder
-	docker-compose run --rm builder make all cover
+	docker compose run --rm builder make all cover
 
 fish: builder
-	docker-compose run --rm builder fish
+	docker compose run --rm builder fish
 
 tidy:
 	go mod tidy

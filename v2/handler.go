@@ -19,7 +19,7 @@ func newHandlerState(lv *slog.LevelVar, delegate slog.Handler, attrs []slog.Attr
 		group: group,
 		level: lv,
 	}
-	hs.setDelegateHandler(delegate)
+	hs.setDelegateHandler(delegate, true)
 	return &hs
 }
 
@@ -31,19 +31,28 @@ type handlerState struct {
 
 	// atomic pointer to handler delegate
 	delegateHandlerPtr atomic.Pointer[slog.Handler]
+	// indicates if the default delegate handler has been overridden with a handler-specific delegate
+	delegateSet bool
 
-	// map of child handlerStates.  Calls to WithAttrs() or WithGroup() create new childen
+	// map of child handlerStates.  Calls to WithAttrs() or WithGroup() create new children
 	// which we need to hold a reference to so we can cascade setDelegateHandler() to them.
 	children map[*handlerState]bool
 	sync.Mutex
 
-	level    *slog.LevelVar
+	level *slog.LevelVar
+	// indicates if the default level has been overridden with a handler-specific level
 	levelSet bool
 }
 
-func (s *handlerState) setDelegateHandler(delegate slog.Handler) {
+func (s *handlerState) setDelegateHandler(delegate slog.Handler, isDefault bool) {
 	s.Lock()
 	defer s.Unlock()
+
+	if s.delegateSet && isDefault {
+		return
+	}
+
+	s.delegateSet = !isDefault
 
 	if delegate == nil {
 		delegate = noop
@@ -59,8 +68,10 @@ func (s *handlerState) setDelegateHandler(delegate slog.Handler) {
 
 	s.delegateHandlerPtr.Store(&delegate)
 
-	for holder, _ := range s.children {
-		holder.setDelegateHandler(delegate)
+	for holder := range s.children {
+		// pass isDefault=false to force children to accept the new delegate.
+		// only the top handler should do the default handling
+		holder.setDelegateHandler(delegate, false)
 	}
 }
 
