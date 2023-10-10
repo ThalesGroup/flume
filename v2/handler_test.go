@@ -53,6 +53,143 @@ func removeKeys(keys ...string) func([]string, slog.Attr) slog.Attr {
 	}
 }
 
+func TestHandlers(t *testing.T) {
+	tests := []struct {
+		name       string
+		wantJSON   string
+		wantText   string
+		level      slog.Level
+		loggerFunc func(t *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) *slog.Logger
+	}{
+		{
+			name: "nil",
+			loggerFunc: func(t *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) *slog.Logger {
+				return slog.New(NewFactory(nil).NewHandler("h1"))
+			},
+		},
+		{
+			name:     "factory constructor",
+			wantJSON: `{"level":  "INFO", "logger": "h1", "msg":"hi"}`,
+			loggerFunc: func(t *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) *slog.Logger {
+				return slog.New(NewFactory(slog.NewJSONHandler(buf, opts)).NewHandler("h1"))
+			},
+		},
+		{
+			name:     "change default before construction",
+			wantJSON: `{"level":  "INFO", "logger": "h1", "msg":"hi"}`,
+			loggerFunc: func(t *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) *slog.Logger {
+				f := NewFactory(nil)
+				f.SetDefaultHandler(slog.NewJSONHandler(buf, opts))
+				return slog.New(f.NewHandler("h1"))
+			},
+		},
+		{
+			name:     "change default after construction",
+			wantText: "level=INFO msg=hi logger=h1\n",
+			loggerFunc: func(t *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) *slog.Logger {
+				f := NewFactory(slog.NewJSONHandler(buf, opts))
+				h := f.NewHandler("h1")
+				f.SetDefaultHandler(slog.NewTextHandler(buf, opts))
+				return slog.New(h)
+			},
+		},
+		{
+			name:     "change other handler before construction",
+			wantJSON: `{"level":  "INFO", "logger": "h1", "msg":"hi"}`,
+			loggerFunc: func(t *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) *slog.Logger {
+				f := NewFactory(slog.NewJSONHandler(buf, opts))
+				f.SetHandler("h2", slog.NewTextHandler(buf, opts))
+				return slog.New(f.NewHandler("h1"))
+			},
+		},
+		{
+			name:     "change specific before construction",
+			wantText: "level=INFO msg=hi logger=h1\n",
+			loggerFunc: func(t *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) *slog.Logger {
+				f := NewFactory(slog.NewJSONHandler(buf, opts))
+				f.SetHandler("h1", slog.NewTextHandler(buf, opts))
+				return slog.New(f.NewHandler("h1"))
+			},
+		},
+		{
+			name:     "change specific after construction",
+			wantText: "level=INFO msg=hi logger=h1\n",
+			loggerFunc: func(t *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) *slog.Logger {
+				f := NewFactory(slog.NewJSONHandler(buf, opts))
+				h := f.NewHandler("h1")
+				f.SetHandler("h1", slog.NewTextHandler(buf, opts))
+				return slog.New(h)
+			},
+		},
+		{
+			name:     "cascade to children after construction",
+			wantText: "level=INFO msg=hi logger=h1 color=red\n",
+			loggerFunc: func(t *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) *slog.Logger {
+				f := NewFactory(slog.NewJSONHandler(buf, opts))
+				h := f.NewHandler("h1")
+				c := h.WithAttrs([]slog.Attr{slog.String("color", "red")})
+				f.SetHandler("h1", slog.NewTextHandler(buf, opts))
+				return slog.New(c)
+			},
+		},
+		{
+			name:     "cascade to children before construction",
+			wantText: "level=INFO msg=hi logger=h1 color=red\n",
+			loggerFunc: func(t *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) *slog.Logger {
+				f := NewFactory(slog.NewJSONHandler(buf, opts))
+				f.SetHandler("h1", slog.NewTextHandler(buf, opts))
+				h := f.NewHandler("h1")
+				c := h.WithAttrs([]slog.Attr{slog.String("color", "red")})
+				return slog.New(c)
+			},
+		},
+		{
+			name: "set default to nil",
+			loggerFunc: func(t *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) *slog.Logger {
+				f := NewFactory(slog.NewJSONHandler(buf, opts))
+				h := f.NewHandler("h1")
+				f.SetDefaultHandler(nil)
+				return slog.New(h)
+			},
+		},
+		{
+			name: "set logger to nil",
+			loggerFunc: func(t *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) *slog.Logger {
+				f := NewFactory(slog.NewJSONHandler(buf, opts))
+				h := f.NewHandler("h1")
+				f.SetHandler("h1", nil)
+				return slog.New(h)
+			},
+		},
+		{
+			name:     "set other logger to nil",
+			wantJSON: `{"level":  "INFO", "logger": "h1", "msg":"hi"}`,
+			loggerFunc: func(t *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) *slog.Logger {
+				f := NewFactory(slog.NewJSONHandler(buf, opts))
+				h := f.NewHandler("h1")
+				f.SetHandler("h2", nil)
+				return slog.New(h)
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			buf := bytes.NewBuffer(nil)
+			l := test.loggerFunc(t, buf, &slog.HandlerOptions{ReplaceAttr: removeKeys(slog.TimeKey)})
+			l.Log(context.Background(), test.level, "hi")
+			switch {
+			case test.wantJSON != "":
+				assert.JSONEq(t, test.wantJSON, buf.String())
+			case test.wantText != "":
+				assert.Equal(t, test.wantText, buf.String())
+			default:
+				assert.Empty(t, buf.String())
+			}
+		})
+	}
+}
+
 func TestLevels(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -64,20 +201,20 @@ func TestLevels(t *testing.T) {
 			name:     "default info",
 			wantJSON: `{"level":  "INFO", "logger": "h1", "msg":"hi"}`,
 			handlerFunc: func(t *testing.T, f *Factory) slog.Handler {
-				return f.newHandler("h1")
+				return f.NewHandler("h1")
 			},
 		},
 		{
 			name:  "default debug",
 			level: slog.LevelDebug,
 			handlerFunc: func(t *testing.T, f *Factory) slog.Handler {
-				return f.newHandler("h1")
+				return f.NewHandler("h1")
 			},
 		},
 		{
 			name: "change default after construction",
 			handlerFunc: func(t *testing.T, f *Factory) slog.Handler {
-				h := f.newHandler("h1")
+				h := f.NewHandler("h1")
 				f.SetDefaultLevel(slog.LevelWarn)
 				return h
 			},
@@ -86,7 +223,7 @@ func TestLevels(t *testing.T) {
 			name: "change default before construction",
 			handlerFunc: func(t *testing.T, f *Factory) slog.Handler {
 				f.SetDefaultLevel(slog.LevelWarn)
-				return f.newHandler("h1")
+				return f.NewHandler("h1")
 			},
 		},
 		{
@@ -94,7 +231,7 @@ func TestLevels(t *testing.T) {
 			level:    slog.LevelDebug,
 			wantJSON: `{"level":  "DEBUG", "logger": "h1", "msg":"hi"}`,
 			handlerFunc: func(t *testing.T, f *Factory) slog.Handler {
-				h := f.newHandler("h1")
+				h := f.NewHandler("h1")
 				f.SetLevel("h1", slog.LevelDebug)
 				return h
 			},
@@ -105,14 +242,14 @@ func TestLevels(t *testing.T) {
 			wantJSON: `{"level":  "DEBUG", "logger": "h1", "msg":"hi"}`,
 			handlerFunc: func(t *testing.T, f *Factory) slog.Handler {
 				f.SetLevel("h1", slog.LevelDebug)
-				return f.newHandler("h1")
+				return f.NewHandler("h1")
 			},
 		},
 		{
 			name:  "set a different handler specific after construction",
 			level: slog.LevelDebug,
 			handlerFunc: func(t *testing.T, f *Factory) slog.Handler {
-				h := f.newHandler("h1")
+				h := f.NewHandler("h1")
 				f.SetLevel("h2", slog.LevelDebug)
 				return h
 			},
@@ -122,7 +259,29 @@ func TestLevels(t *testing.T) {
 			level: slog.LevelDebug,
 			handlerFunc: func(t *testing.T, f *Factory) slog.Handler {
 				f.SetLevel("h2", slog.LevelDebug)
-				return f.newHandler("h1")
+				return f.NewHandler("h1")
+			},
+		},
+		{
+			name:     "cascade to children",
+			level:    slog.LevelDebug,
+			wantJSON: `{"level":  "DEBUG", "logger": "h1", "msg":"hi", "color":"red"}`,
+			handlerFunc: func(t *testing.T, f *Factory) slog.Handler {
+				f.SetLevel("h1", slog.LevelDebug)
+				h := f.NewHandler("h1")
+				c := h.WithAttrs([]slog.Attr{slog.String("color", "red")})
+				return c
+			},
+		},
+		{
+			name:     "update after creating child",
+			level:    slog.LevelDebug,
+			wantJSON: `{"level":  "DEBUG", "logger": "h1", "msg":"hi", "color":"red"}`,
+			handlerFunc: func(t *testing.T, f *Factory) slog.Handler {
+				h := f.NewHandler("h1")
+				c := h.WithAttrs([]slog.Attr{slog.String("color", "red")})
+				f.SetLevel("h1", slog.LevelDebug)
+				return c
 			},
 		},
 	}
