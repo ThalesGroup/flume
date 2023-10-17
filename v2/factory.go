@@ -25,33 +25,33 @@ func NewFactory(defaultHandler slog.Handler) *Factory {
 	return &Factory{defaultHandler: defaultHandler}
 }
 
-func (r *Factory) NewHandler(name string) slog.Handler {
+func (r *Factory) NewHandler(loggerName string) slog.Handler {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	return r.newHandler(name)
+	return r.newHandler(loggerName)
 }
 
-func (r *Factory) newHandler(name string) *handler {
-	h, ok := r.handlers[name]
+func (r *Factory) newHandler(loggerName string) *handler {
+	h, ok := r.handlers[loggerName]
 	if !ok {
 		levelVar := &slog.LevelVar{}
 		levelVar.Set(r.defaultLevel)
-		h = &handler{newHandlerState(levelVar, r.defaultHandler, []slog.Attr{slog.String(LoggerNameKey, name)}, "")}
+		h = &handler{newHandlerState(levelVar, r.defaultHandler, []slog.Attr{slog.String(LoggerNameKey, loggerName)}, "")}
 		if r.handlers == nil {
 			r.handlers = map[string]*handler{}
 		}
-		r.handlers[name] = h
+		r.handlers[loggerName] = h
 	}
 
 	return h
 }
 
-func (r *Factory) SetHandler(name string, handler slog.Handler) {
+func (r *Factory) SetLoggerHandler(loggerName string, handler slog.Handler) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	r.newHandler(name).setDelegateHandler(handler, false)
+	r.newHandler(loggerName).setDelegateHandler(handler, false)
 }
 
 func (r *Factory) SetDefaultHandler(handler slog.Handler) {
@@ -65,13 +65,13 @@ func (r *Factory) SetDefaultHandler(handler slog.Handler) {
 	}
 }
 
-// SetLevel sets the log level for a particular named logger.  All handlers with this same
+// SetLoggerLevel sets the log level for a particular named logger.  All handlers with this same
 // are affected, in the past or future.
-func (r *Factory) SetLevel(name string, l slog.Level) {
+func (r *Factory) SetLoggerLevel(loggerName string, l slog.Level) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	r.newHandler(name).setLevel(l, false)
+	r.newHandler(loggerName).setLevel(l, false)
 }
 
 // SetDefaultLevel sets the default log level for all handlers which don't have a specific level
