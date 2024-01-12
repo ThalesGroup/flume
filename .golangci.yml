@@ -112,13 +112,28 @@ linters-settings:
     # minimal occurrences count to trigger, 3 by default
     min-occurrences: 3
   depguard:
-    list-type: blacklist
-    include-go-root: false
-    packages:
-      - github.com/magiconair/properties/assert
-    inTests:
-      - github.com/davecgh/go-spew/spew
-      - github.com/stretchr/testify
+    rules:
+      # Name of a rule.
+      all:
+        # List of file globs that will match this list of settings to compare against.
+        # Default: $all
+        files:
+          - $all
+        # List of allowed packages.
+        # allow:
+        #  - $gostd
+        # Packages that are not allowed where the value is a suggestion.
+        deny:
+          - pkg: github.com/magiconair/properties/assert
+            desc: Use testify/assert package instead
+      main:
+        files:
+          - "!$test"
+        deny:
+          - pkg: github.com/davecgh/go-spew/spew
+            desc: spew is usually only used in tests
+          - pkg: github.com/stretchr/testify
+            desc: testify is usually only used in tests
   gomodguard:
     blocked:
       modules:

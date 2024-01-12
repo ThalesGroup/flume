@@ -24,6 +24,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -119,6 +120,7 @@ func (l *lockedBuf) String() string {
 type testingTB interface {
 	Failed() bool
 	Log(args ...interface{})
+	Cleanup(func())
 }
 
 func start(t testingTB) func() {
@@ -129,11 +131,21 @@ func start(t testingTB) func() {
 		// need to use a synchronized version of buf, since
 		// logs may be written on other goroutines than this one,
 		// and bytes.Buffer is not concurrent safe.
-		buf := lockedBuf{
+		buf := &lockedBuf{
 			buf: bytes.NewBuffer(nil),
 		}
-		revertOut := flume.SetOut(&buf)
+		revertOut := flume.SetOut(buf)
+
+		// since we're calling this function via t.Cleanup *and* returning
+		// the function so the caller can call it with defer, there is a good
+		// chance it will be called twice.  I can't use sync.Once here, because
+		// if recover() is called inside the Once func, it doesn't work.  recover()
+		// must be called directly in the deferred function
+		ran := atomic.Bool{}
 		revert = func() {
+			if !ran.CompareAndSwap(false, true) {
+				return
+			}
 			revertOut()
 			// make sure that if the test panics or fails, we dump the logs
 			recovered := recover()
@@ -144,8 +156,24 @@ func start(t testingTB) func() {
 				panic(recovered)
 			}
 		}
-
 	}
 
+	t.Cleanup(revert)
+	// Calling Cleanup() to revert these changes should be sufficient, but isn't due to
+	// this bug: https://github.com/golang/go/issues/49929
+	// Due to that issue, if the test panics:
+	// 1. t.Failed() returns false inside the cleanup function
+	// 2. the revert doesn't know the test failed
+	// 3. the revert function doesn't flush its captured logs as it should when a test fails
+	//
+	// So we do both: call the revert function via t.Cleanup, as well as return a function
+	// that the test can call via defer.  t.Cleanup ensures we as least return the state
+	// of the system, even if the test itself doesn't call the revert cleanup function,
+	// but returning the cleanup function as well means tests that *do* call it via defer
+	// will correctly handle test panics.
+	//
+	// Since that bug is expected to be fixed soon in go, flume v2 may only rely on
+	// on t.Cleanup(), to make the API simpler, and live with the limitation until go fixes
+	// it.
 	return revert
 }
