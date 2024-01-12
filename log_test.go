@@ -103,7 +103,7 @@ func TestNew(t *testing.T) {
 
 }
 
-func TestTwo(t *testing.T) {
+func TestTwo(_ *testing.T) {
 	// f := NewFactory()
 	f := pkgFactory
 	config := NewEncoderConfig()
@@ -115,7 +115,7 @@ func TestTwo(t *testing.T) {
 	l.Info("hi mom", "color", 5)
 }
 
-func TestBinary(t *testing.T) {
+func TestBinary(_ *testing.T) {
 	f := NewFactory()
 	l := f.NewLogger("")
 	f.SetDefaultLevel(DebugLevel)
