@@ -5,13 +5,13 @@ import (
 	"sync"
 )
 
-const LoggerNameKey = "logger"
+const loggerNameKey = "logger"
 
 // Factory is a log management core.  It spawns handlers.  The Factory has
 // methods for dynamically reconfiguring all the handlers spawned from Factory.
 //
-// The flume package has mirrors of most of the functions which delegate to a
-// default, package-level factory.
+// Package-level functions mirror of most of Factory's methods, which delegate to a
+// default factory.
 type Factory struct {
 	defaultLevel slog.Level
 
@@ -37,7 +37,7 @@ func (r *Factory) newHandler(loggerName string) *handler {
 	if !ok {
 		levelVar := &slog.LevelVar{}
 		levelVar.Set(r.defaultLevel)
-		h = &handler{newHandlerState(levelVar, r.defaultHandler, []slog.Attr{slog.String(LoggerNameKey, loggerName)}, "")}
+		h = &handler{newHandlerState(levelVar, r.defaultHandler, []slog.Attr{slog.String(loggerNameKey, loggerName)}, "")}
 		if r.handlers == nil {
 			r.handlers = map[string]*handler{}
 		}
