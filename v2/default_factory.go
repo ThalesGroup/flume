@@ -1,30 +1,37 @@
 package flume
 
-import "log/slog"
+import (
+	"log/slog"
+	"sync/atomic"
+)
 
-var defaultFactory *Factory
+var defaultFactory atomic.Pointer[Factory]
 
 //nolint:gochecknoinits
 func init() {
-	defaultFactory = NewFactory(slog.Default().Handler())
+	defaultFactory.Store(NewFactory(slog.Default().Handler()))
+}
+
+func deflt() *Factory {
+	return defaultFactory.Load()
 }
 
 func NewHandler(loggerName string) slog.Handler {
-	return defaultFactory.NewHandler(loggerName)
+	return deflt().NewHandler(loggerName)
 }
 
 func SetLoggerHandler(loggerName string, handler slog.Handler) {
-	defaultFactory.SetLoggerHandler(loggerName, handler)
+	deflt().SetLoggerHandler(loggerName, handler)
 }
 
 func SetDefaultHandler(handler slog.Handler) {
-	defaultFactory.SetDefaultHandler(handler)
+	deflt().SetDefaultHandler(handler)
 }
 
 func SetLoggerLevel(loggerName string, l slog.Level) {
-	defaultFactory.SetLoggerLevel(loggerName, l)
+	deflt().SetLoggerLevel(loggerName, l)
 }
 
 func SetDefaultLevel(l slog.Level) {
-	defaultFactory.SetDefaultLevel(l)
+	deflt().SetDefaultLevel(l)
 }
