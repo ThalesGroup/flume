@@ -157,11 +157,6 @@ func (s *handlerState) Handle(ctx context.Context, record slog.Record) error {
 // Programmatic options
 // 1. Set out
 // 2. ReplaceAttr hooks
-//
-// Features:
-//
-// 1. "named" handlers, adding a name attr to all records
-// 2. Reconfigure handlers by name
 
 var noop = noopHandler{}
 
