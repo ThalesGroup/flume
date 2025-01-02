@@ -7,10 +7,8 @@ import (
 	"log/slog"
 	"os"
 	"runtime"
-	"strings"
 	"testing"
 
-	"github.com/ansel1/merry"
 	"github.com/stretchr/testify/assert"
 )
 
