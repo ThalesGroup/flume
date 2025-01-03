@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestHandlerStateWeakRef(t *testing.T) {
+func TestStateWeakRef(t *testing.T) {
 	// This ensures that child handlers are garbage collected.  slog methods like WithGroup() create
 	// copies of their handlers, and flume's handlers keep references to those child handlers, so that
 	// changes from the Factory can propagate down through all the handler clones.

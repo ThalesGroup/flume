@@ -8,10 +8,10 @@ import (
 )
 
 type handler struct {
-	*handlerState
+	*state
 }
 
-type handlerState struct {
+type state struct {
 	// attrs associated with this handler.  immutable after initial construction.
 	attrs []slog.Attr
 	// group associated with this handler.  immutable after initial construction.
@@ -26,7 +26,7 @@ type handlerState struct {
 	conf *conf
 }
 
-func (s *handlerState) setDelegate(delegate slog.Handler) {
+func (s *state) setDelegate(delegate slog.Handler) {
 	// re-apply groups and attrs settings
 	// don't need to check if s.attrs is empty: it will never be empty because
 	// all flume handlers have at least a "logger_name" attribute
@@ -38,24 +38,24 @@ func (s *handlerState) setDelegate(delegate slog.Handler) {
 	s.delegateHandlerPtr.Store(&delegate)
 }
 
-func (s *handlerState) delegateHandler() slog.Handler {
+func (s *state) delegateHandler() slog.Handler {
 	handlerRef := s.delegateHandlerPtr.Load()
 	return *handlerRef
 }
 
-func (s *handlerState) WithAttrs(attrs []slog.Attr) slog.Handler {
+func (s *state) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return s.conf.newHandler(append(s.attrs, attrs...), s.groups)
 }
 
-func (s *handlerState) WithGroup(name string) slog.Handler {
+func (s *state) WithGroup(name string) slog.Handler {
 	return s.conf.newHandler(s.attrs, append(s.groups, name))
 }
 
-func (s *handlerState) Enabled(_ context.Context, level slog.Level) bool {
+func (s *state) Enabled(_ context.Context, level slog.Level) bool {
 	return level >= s.level.Level()
 }
 
-func (s *handlerState) Handle(ctx context.Context, record slog.Record) error {
+func (s *state) Handle(ctx context.Context, record slog.Record) error {
 	return s.delegateHandler().Handle(ctx, record)
 }
 
