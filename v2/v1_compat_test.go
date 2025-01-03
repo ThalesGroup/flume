@@ -2,16 +2,18 @@ package flume
 
 import (
 	"bytes"
-	"github.com/stretchr/testify/assert"
 	"log/slog"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func appendString(key, value string) func(groups []string, a slog.Attr) slog.Attr {
-	return func(groups []string, a slog.Attr) slog.Attr {
+	return func(_ []string, a slog.Attr) slog.Attr {
 		if a.Value.Kind() == slog.KindString && a.Key == key {
 			a.Value = slog.StringValue(a.Value.String() + value)
 		}
+
 		return a
 	}
 }
@@ -50,9 +52,9 @@ func TestChainReplaceAttrs(t *testing.T) {
 			replaceAttrFuncs := test.replaceAttrFuncs
 			replaceAttrFuncs = append(replaceAttrFuncs, removeKeys(slog.TimeKey))
 
-			f := NewFactory(slog.NewTextHandler(buf, &slog.HandlerOptions{ReplaceAttr: ChainReplaceAttrs(replaceAttrFuncs...)}))
+			f := NewController(slog.NewTextHandler(buf, &slog.HandlerOptions{ReplaceAttr: ChainReplaceAttrs(replaceAttrFuncs...)}))
 
-			l := slog.New(f.NewHandler("blue"))
+			l := slog.New(f.Handler("blue"))
 			l.Info("hi", test.args...)
 			assert.Equal(t, test.wantText, buf.String())
 		})

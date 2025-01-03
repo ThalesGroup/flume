@@ -5,31 +5,31 @@ import (
 	"sync/atomic"
 )
 
-var defaultFactory atomic.Pointer[Factory]
+var defaultFactory atomic.Pointer[Controller]
 
 //nolint:gochecknoinits
 func init() {
-	defaultFactory.Store(NewFactory(slog.Default().Handler()))
+	defaultFactory.Store(NewController(slog.Default().Handler()))
 }
 
-func deflt() *Factory {
+func deflt() *Controller {
 	return defaultFactory.Load()
 }
 
 func NewHandler(loggerName string) slog.Handler {
-	return deflt().NewHandler(loggerName)
+	return deflt().Handler(loggerName)
 }
 
 func SetLoggerHandler(loggerName string, handler slog.Handler) {
-	deflt().SetLoggerHandler(loggerName, handler)
+	deflt().SetDelegate(loggerName, handler)
 }
 
 func SetDefaultHandler(handler slog.Handler) {
-	deflt().SetDefaultHandler(handler)
+	deflt().SetDefaultDelegate(handler)
 }
 
 func SetLoggerLevel(loggerName string, l slog.Level) {
-	deflt().SetLoggerLevel(loggerName, l)
+	deflt().SetLevel(loggerName, l)
 }
 
 func SetDefaultLevel(l slog.Level) {

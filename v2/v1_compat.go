@@ -2,7 +2,6 @@ package flume
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 )
 
@@ -20,7 +19,6 @@ func BareAttr() func(slog.Handler) slog.Handler {
 		}
 
 		record.Attrs(func(attr slog.Attr) bool {
-
 			if attr.Key != badKey {
 				return false
 			}
@@ -39,7 +37,7 @@ func BareAttr() func(slog.Handler) slog.Handler {
 	})
 }
 
-func asError(value slog.Value) (error, bool) {
+func asError(value slog.Value) (error, bool) { //nolint:revive
 	if value.Kind() != slog.KindAny {
 		return nil, false
 	}
@@ -54,16 +52,16 @@ func asError(value slog.Value) (error, bool) {
 // 	}
 // }
 
-func resolve(value slog.Value) slog.Value {
-	v := value.Resolve()
-	if v.Kind() == slog.KindGroup {
-		grp := v.Group()
-		for i := range grp {
-			grp[i].Value = resolve(grp[i].Value)
-		}
-	}
-	return v
-}
+// func resolve(value slog.Value) slog.Value {
+// 	v := value.Resolve()
+// 	if v.Kind() == slog.KindGroup {
+// 		grp := v.Group()
+// 		for i := range grp {
+// 			grp[i].Value = resolve(grp[i].Value)
+// 		}
+// 	}
+// 	return v
+// }
 
 func applyReplaceAttrs(groups []string, a slog.Attr, fns []func([]string, slog.Attr) slog.Attr) slog.Attr {
 	for i, fn := range fns {
@@ -89,6 +87,7 @@ func applyReplaceAttrs(groups []string, a slog.Attr, fns []func([]string, slog.A
 			return a
 		}
 	}
+
 	return a
 }
 
@@ -106,12 +105,12 @@ func ChainReplaceAttrs(fns ...func([]string, slog.Attr) slog.Attr) func([]string
 	}
 }
 
-func er(_ []string, a slog.Attr) slog.Attr {
-	if err, ok := asError(a.Value); ok {
-		a.Value = slog.StringValue(fmt.Sprintf("%+v", err))
-	}
-	return a
-}
+// func er(_ []string, a slog.Attr) slog.Attr {
+// 	if err, ok := asError(a.Value); ok {
+// 		a.Value = slog.StringValue(fmt.Sprintf("%+v", err))
+// 	}
+// 	return a
+// }
 
 // logger name is logged with attribute "name"
 // l.Info("msg", err) => error:boom	errorVerbose:boom\n\n...

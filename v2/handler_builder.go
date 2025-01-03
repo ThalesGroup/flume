@@ -9,6 +9,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/ansel1/merry/v2"
 )
 
 type Config struct {
@@ -53,6 +55,7 @@ var levelAbbreviations = map[slog.Level]string{
 
 func parseLevel(v any) (slog.Level, error) {
 	var s string
+
 	switch v := v.(type) {
 	case nil:
 		return slog.LevelInfo, nil
@@ -94,7 +97,8 @@ func parseLevel(v any) (slog.Level, error) {
 
 	var l slog.Level
 	err := l.UnmarshalText([]byte(s))
-	return l, err
+
+	return l, merry.Prependf(err, "invalid log level '%v'", v)
 }
 
 type config Config
@@ -106,7 +110,7 @@ func (c *Config) UnmarshalJSON(bytes []byte) error {
 	}{}
 
 	if err := json.Unmarshal(bytes, &s1); err != nil {
-		return err
+		return merry.Prepend(err, "invalid json config")
 	}
 
 	s := struct {
@@ -122,7 +126,7 @@ func (c *Config) UnmarshalJSON(bytes []byte) error {
 	}
 
 	if err := json.Unmarshal(bytes, &s); err != nil {
-		return err
+		return merry.Prependf(err, "invalid json config")
 	}
 
 	// for backward compat with v1, allow "level" as an alias
@@ -152,7 +156,7 @@ func (c *Config) UnmarshalJSON(bytes []byte) error {
 	return nil
 }
 
-func (c *Config) Configure(f *Factory) error {
+func (c *Config) Configure(f *Controller) error {
 	f.SetDefaultLevel(c.DefaultLevel)
 
 	out := c.Out
@@ -175,7 +179,7 @@ func (c *Config) Configure(f *Factory) error {
 		handler = slog.NewJSONHandler(out, &opts)
 	}
 
-	f.SetDefaultHandler(handler)
+	f.SetDefaultDelegate(handler)
 
 	return nil
 }

@@ -5,13 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"math"
+	"testing"
+
 	maps "github.com/ansel1/vespucci/v4"
 	"github.com/ansel1/vespucci/v4/mapstest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"log/slog"
-	"math"
-	"testing"
 )
 
 func TestDevDefaults(t *testing.T) {
@@ -119,12 +120,12 @@ func TestConfig_Configure(t *testing.T) {
 	tests := []struct {
 		name     string
 		conf     Config
-		logFn    func(*testing.T, *slog.Logger, *Factory)
+		logFn    func(*testing.T, *slog.Logger, *Controller)
 		assertFn func(*testing.T, *bytes.Buffer)
 	}{
 		{
 			name: "defaults",
-			logFn: func(t *testing.T, l *slog.Logger, _ *Factory) {
+			logFn: func(t *testing.T, l *slog.Logger, _ *Controller) {
 				assert.True(t, l.Enabled(context.Background(), slog.LevelInfo))
 				assert.False(t, l.Enabled(context.Background(), slog.LevelDebug))
 				l.Info("hi")
@@ -138,7 +139,7 @@ func TestConfig_Configure(t *testing.T) {
 			conf: Config{
 				DefaultLevel: slog.LevelDebug,
 			},
-			logFn: func(t *testing.T, l *slog.Logger, _ *Factory) {
+			logFn: func(t *testing.T, l *slog.Logger, _ *Controller) {
 				assert.True(t, l.Enabled(context.Background(), slog.LevelDebug))
 			},
 		},
@@ -147,7 +148,7 @@ func TestConfig_Configure(t *testing.T) {
 			conf: Config{
 				DefaultLevel: slog.LevelWarn,
 			},
-			logFn: func(t *testing.T, l *slog.Logger, _ *Factory) {
+			logFn: func(t *testing.T, l *slog.Logger, _ *Controller) {
 				assert.True(t, l.Enabled(context.Background(), slog.LevelWarn))
 				assert.False(t, l.Enabled(context.Background(), slog.LevelInfo))
 			},
@@ -157,7 +158,7 @@ func TestConfig_Configure(t *testing.T) {
 			conf: Config{
 				Encoding: "text",
 			},
-			logFn: func(t *testing.T, l *slog.Logger, _ *Factory) {
+			logFn: func(t *testing.T, l *slog.Logger, _ *Controller) {
 				l.Info("hi")
 				assert.Contains(t, buf.String(), "msg=hi")
 			},
@@ -167,7 +168,7 @@ func TestConfig_Configure(t *testing.T) {
 			conf: Config{
 				AddSource: true,
 			},
-			logFn: func(t *testing.T, l *slog.Logger, _ *Factory) {
+			logFn: func(t *testing.T, l *slog.Logger, _ *Controller) {
 				l.Info("hi")
 				mapstest.AssertContains(
 					t,
@@ -184,7 +185,7 @@ func TestConfig_Configure(t *testing.T) {
 			conf: Config{
 				Levels: "*=WRN,blue=INF",
 			},
-			logFn: func(t *testing.T, l *slog.Logger, f *Factory) {
+			logFn: func(t *testing.T, l *slog.Logger, f *Controller) {
 				l.Info("hi")
 				assert.Empty(t, buf.String(), "default logger should only log warn and higher")
 
@@ -193,7 +194,7 @@ func TestConfig_Configure(t *testing.T) {
 				mapstest.AssertContains(t, json.RawMessage(buf.Bytes()), map[string]any{"msg": "bye"}, "warn should be have been logged, was %v", buf.String())
 
 				buf.Reset()
-				l2 := slog.New(f.NewHandler("blue"))
+				l2 := slog.New(f.Handler("blue"))
 				l2.Info("cya")
 				mapstest.AssertContains(t, json.RawMessage(buf.Bytes()), map[string]any{"msg": "cya", "logger": "blue"}, "blue logger should log info level, was %v", buf.String())
 			},
@@ -204,15 +205,15 @@ func TestConfig_Configure(t *testing.T) {
 			buf.Reset()
 			test.conf.Out = buf
 
-			factory := NewFactory(nil)
+			ctl := NewController(nil)
 
-			err := test.conf.Configure(factory)
+			err := test.conf.Configure(ctl)
 			require.NoError(t, err)
 
-			l := slog.New(factory.NewHandler(""))
+			l := slog.New(ctl.Handler(""))
 
 			if test.logFn != nil {
-				test.logFn(t, l, factory)
+				test.logFn(t, l, ctl)
 			}
 		})
 	}

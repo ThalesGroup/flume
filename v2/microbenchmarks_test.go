@@ -1,7 +1,6 @@
 package flume
 
 import (
-	"fmt"
 	"sync/atomic"
 	"testing"
 )
@@ -11,14 +10,13 @@ func BenchmarkAtomicInt(b *testing.B) {
 	ai.Store(100)
 
 	var k int
-	defer func() {
-		fmt.Print(k)
-	}()
 
 	for i := 0; i < b.N; i++ {
 		j := ai.Load()
 		k = int(j) + i
 	}
+
+	_ = k
 }
 
 func BenchmarkAtomicPtr(b *testing.B) {
@@ -27,12 +25,11 @@ func BenchmarkAtomicPtr(b *testing.B) {
 	ai.Store(&s)
 
 	var k int
-	defer func() {
-		fmt.Print(k)
-	}()
 
 	for i := 0; i < b.N; i++ {
 		j := ai.Load()
 		k = int(*j) + i
 	}
+
+	_ = k
 }
