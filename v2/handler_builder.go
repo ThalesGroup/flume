@@ -17,9 +17,8 @@ type Config struct {
 	// DefaultLevel is the default log level for all loggers not
 	// otherwise configured by Levels.  Defaults to Info.
 	DefaultLevel slog.Level `json:"defaultLevel,omitempty"`
-	// Levels configures log levels for particular named loggers.  See
-	// LevelsString for format.
-	Levels string `json:"levels,omitempty"`
+	// Levels configures log levels for particular named loggers.
+	Levels Levels `json:"levels,omitempty"`
 	// Encoding sets the logger's encoding. Valid values are "json",
 	// "text", "ltsv", "term", and "term-color".
 	//
@@ -64,6 +63,13 @@ func parseLevel(v any) (slog.Level, error) {
 	case float64:
 		// allow raw integer values for level
 		return slog.Level(v), nil
+	case int:
+		return slog.Level(v), nil
+	case bool:
+		if v {
+			return slog.Level(math.MinInt), nil
+		}
+		return slog.Level(math.MaxInt), nil
 	default:
 		return 0, errors.New("levels must be a string or int value")
 	}
@@ -159,6 +165,10 @@ func (c *Config) UnmarshalJSON(bytes []byte) error {
 func (c *Config) Configure(f *Controller) error {
 	f.SetDefaultLevel(c.DefaultLevel)
 
+	for name, level := range c.Levels {
+		f.SetLevel(name, level)
+	}
+
 	out := c.Out
 	if out == nil {
 		out = os.Stdout
@@ -182,4 +192,65 @@ func (c *Config) Configure(f *Controller) error {
 	f.SetDefaultDelegate(handler)
 
 	return nil
+}
+
+type Levels map[string]slog.Level
+
+func (l *Levels) UnmarshalText(text []byte) error {
+	m, err := parseLevels(string(text))
+	if err != nil {
+		return err
+	}
+	*l = m
+	return nil
+}
+
+func (l *Levels) MarshalText() ([]byte, error) {
+	if l == nil || *l == nil || len(*l) == 0 {
+		return []byte{}, nil
+	}
+
+	directives := make([]string, 0, len(*l))
+	for name, level := range *l {
+		switch level {
+		case slog.Level(math.MaxInt):
+			directives = append(directives, "-"+name)
+		case slog.Level(math.MinInt):
+			directives = append(directives, name)
+		default:
+			directives = append(directives, name+"="+level.String())
+		}
+	}
+
+	return []byte(strings.Join(directives, ",")), nil
+}
+
+func parseLevels(s string) (map[string]slog.Level, error) {
+	if s == "" {
+		return nil, nil //nolint:nilnil
+	}
+
+	items := strings.Split(s, ",")
+	m := map[string]slog.Level{}
+
+	var errs error
+
+	for _, setting := range items {
+		parts := strings.Split(setting, "=")
+
+		switch len(parts) {
+		case 1:
+			name := parts[0]
+			if strings.HasPrefix(name, "-") {
+				m[name[1:]] = slog.Level(math.MaxInt)
+			} else {
+				m[name] = slog.Level(math.MinInt)
+			}
+		case 2:
+			var err error
+			m[parts[0]], err = parseLevel(parts[1])
+			errs = errors.Join(errs, err)
+		}
+	}
+	return m, merry.Prepend(errs, "invalid log levels")
 }

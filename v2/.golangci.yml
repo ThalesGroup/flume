@@ -17,6 +17,9 @@ linters-settings:
     ignorePackageGlobs:
       - github.com/ansel1/merry/*
       - log/slog*
+
+  exhaustive:
+    default-signifies-exhaustive: true
   
 linters:
   # to try out individual linters: golangci-lint run -E gocyclo,gosimple
@@ -37,6 +40,7 @@ linters:
     - depguard
     - nlreturn           # kind of like this one, with a block size of 2, but can't get it to work right
     - godot              # consider turning this back on when I'm ready to policy the comments
+    - mnd
 
 issues:
   # List of regexps of issue texts to exclude, empty list by default.

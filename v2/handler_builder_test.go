@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"strings"
 	"testing"
 
 	maps "github.com/ansel1/vespucci/v4"
@@ -60,7 +61,7 @@ func TestConfig_UnmarshalJSON(t *testing.T) {
 			confJSON: `{"level":"WRN", "levels":"blue=WRN", "encoding":"text", "addSource":true}`,
 			expected: Config{
 				DefaultLevel: slog.LevelWarn,
-				Levels:       "blue=WRN",
+				Levels:       Levels{"blue": slog.LevelWarn},
 				Encoding:     "text",
 				AddSource:    true,
 			},
@@ -183,7 +184,7 @@ func TestConfig_Configure(t *testing.T) {
 		{
 			name: "levels",
 			conf: Config{
-				Levels: "*=WRN,blue=INF",
+				Levels: Levels{"*": slog.LevelWarn, "blue": slog.LevelInfo},
 			},
 			logFn: func(t *testing.T, l *slog.Logger, f *Controller) {
 				l.Info("hi")
@@ -215,6 +216,115 @@ func TestConfig_Configure(t *testing.T) {
 			if test.logFn != nil {
 				test.logFn(t, l, ctl)
 			}
+		})
+	}
+}
+
+func TestLevelsMarshaling(t *testing.T) {
+	tests := []struct {
+		name     string
+		levels   Levels
+		expected string
+	}{
+		{
+			name:     "empty",
+			levels:   Levels{},
+			expected: "",
+		},
+		{
+			name:     "nil",
+			levels:   nil,
+			expected: "",
+		},
+		{
+			name: "values",
+			levels: Levels{
+				"info":   slog.LevelInfo,
+				"warn":   slog.LevelWarn,
+				"error":  slog.LevelError,
+				"debug":  slog.LevelDebug,
+				"off":    math.MaxInt,
+				"all":    math.MinInt,
+				"offset": slog.LevelDebug + 2,
+			},
+			expected: "info=INFO,warn=WARN,error=ERROR,debug=DEBUG,-off,all,offset=DEBUG+2",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			actual, err := test.levels.MarshalText()
+			require.NoError(t, err)
+
+			// order of directives in the encoded string is non-deterministic
+			assert.ElementsMatch(t, strings.Split(string(actual), ","), strings.Split(test.expected, ","))
+
+			// test unmarshaling
+			var levels Levels
+			err = levels.UnmarshalText(actual)
+			require.NoError(t, err)
+
+			if len(test.levels) == 0 {
+				assert.Nil(t, levels)
+			} else {
+				assert.Equal(t, test.levels, levels)
+			}
+		})
+	}
+}
+
+func TestLevelsUnmarshaling(t *testing.T) {
+	tests := []struct {
+		name     string
+		text     string
+		expected Levels
+	}{
+		{
+			name:     "empty",
+			text:     "",
+			expected: nil,
+		},
+		{
+			name: "values",
+			text: "info=INFO,warn=WARN,error=ERROR,debug=DEBUG,-disable,on,offset=DEBUG+2,offsetMinus=DBG-2,inf=INF,wrn=WRN,err=ERR,dbg=DBG,int=-4,def=,all=all,off=off",
+			expected: Levels{
+				"info":        slog.LevelInfo,
+				"warn":        slog.LevelWarn,
+				"error":       slog.LevelError,
+				"debug":       slog.LevelDebug,
+				"disable":     math.MaxInt,
+				"on":          math.MinInt,
+				"offset":      slog.LevelDebug + 2,
+				"offsetMinus": slog.LevelDebug - 2,
+				"inf":         slog.LevelInfo,
+				"wrn":         slog.LevelWarn,
+				"err":         slog.LevelError,
+				"dbg":         slog.LevelDebug,
+				"int":         slog.LevelDebug,
+				"def":         slog.LevelInfo,
+				"all":         math.MinInt,
+				"off":         math.MaxInt,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var levels Levels
+			err := levels.UnmarshalText([]byte(test.text))
+			require.NoError(t, err)
+
+			assert.Equal(t, test.expected, levels)
+
+			// test roundtrip
+			actual, err := levels.MarshalText()
+			require.NoError(t, err)
+
+			var levels2 Levels
+			err = levels2.UnmarshalText(actual)
+			require.NoError(t, err)
+
+			assert.Equal(t, levels, levels2)
 		})
 	}
 }

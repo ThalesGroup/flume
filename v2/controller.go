@@ -81,6 +81,11 @@ func (r *Controller) SetDefaultDelegate(handler slog.Handler) {
 // SetLevel sets the log level for a particular named logger.  All handlers with this same
 // are affected, in the past or future.
 func (r *Controller) SetLevel(handlerName string, l slog.Level) {
+	if handlerName == "*" {
+		r.SetDefaultLevel(l)
+		return
+	}
+
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
