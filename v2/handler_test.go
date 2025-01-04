@@ -225,7 +225,7 @@ func TestHandlers(t *testing.T) {
 			name:     "default",
 			wantJSON: `{"level":  "INFO", "logger": "def1", "msg":"hi"}`,
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
-				SetDefaultHandler(slog.NewJSONHandler(buf, opts))
+				SetDefaultDelegate(slog.NewJSONHandler(buf, opts))
 				return NewHandler("def1")
 			},
 		},
@@ -233,7 +233,7 @@ func TestHandlers(t *testing.T) {
 			name:     "default with text",
 			wantText: "level=INFO msg=hi logger=def1\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
-				SetDefaultHandler(slog.NewTextHandler(buf, opts))
+				SetDefaultDelegate(slog.NewTextHandler(buf, opts))
 				return NewHandler("def1")
 			},
 		},
@@ -241,8 +241,8 @@ func TestHandlers(t *testing.T) {
 			name:     "default with specific logger",
 			wantText: "level=INFO msg=hi logger=def2\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
-				SetDefaultHandler(slog.NewJSONHandler(buf, opts))
-				SetLoggerHandler("def2", slog.NewTextHandler(buf, opts))
+				SetDefaultDelegate(slog.NewJSONHandler(buf, opts))
+				SetDelegate("def2", slog.NewTextHandler(buf, opts))
 
 				return NewHandler("def2")
 			},
@@ -252,7 +252,7 @@ func TestHandlers(t *testing.T) {
 			level: slog.LevelDebug,
 			// wantText: "level=INFO msg=hi logger=def1\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
-				SetDefaultHandler(slog.NewTextHandler(buf, opts))
+				SetDefaultDelegate(slog.NewTextHandler(buf, opts))
 				return NewHandler("def1")
 			},
 		},
@@ -261,7 +261,7 @@ func TestHandlers(t *testing.T) {
 			level:    slog.LevelDebug,
 			wantText: "level=DEBUG msg=hi logger=def1\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
-				SetDefaultHandler(slog.NewTextHandler(buf, opts))
+				SetDefaultDelegate(slog.NewTextHandler(buf, opts))
 				SetDefaultLevel(slog.LevelDebug)
 
 				return NewHandler("def1")
@@ -272,9 +272,9 @@ func TestHandlers(t *testing.T) {
 			level:    slog.LevelDebug,
 			wantText: "level=DEBUG msg=hi logger=TestHandlers/set_specific_log_level\n",
 			handlerFn: func(t *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
-				SetDefaultHandler(slog.NewTextHandler(buf, opts))
+				SetDefaultDelegate(slog.NewTextHandler(buf, opts))
 				SetDefaultLevel(slog.LevelInfo)
-				SetLoggerLevel(t.Name(), slog.LevelDebug)
+				SetLevel(t.Name(), slog.LevelDebug)
 
 				return NewHandler(t.Name())
 			},

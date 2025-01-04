@@ -52,9 +52,9 @@ func TestChainReplaceAttrs(t *testing.T) {
 			replaceAttrFuncs := test.replaceAttrFuncs
 			replaceAttrFuncs = append(replaceAttrFuncs, removeKeys(slog.TimeKey))
 
-			f := NewController(slog.NewTextHandler(buf, &slog.HandlerOptions{ReplaceAttr: ChainReplaceAttrs(replaceAttrFuncs...)}))
+			c := NewController(slog.NewTextHandler(buf, &slog.HandlerOptions{ReplaceAttr: ChainReplaceAttrs(replaceAttrFuncs...)}))
 
-			l := slog.New(f.Handler("blue"))
+			l := c.Logger("blue")
 			l.Info("hi", test.args...)
 			assert.Equal(t, test.wantText, buf.String())
 		})

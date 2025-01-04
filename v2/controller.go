@@ -32,6 +32,10 @@ func NewController(delegateHandler slog.Handler) *Controller {
 	return &Controller{defaultDelegate: delegateHandler}
 }
 
+func (r *Controller) Logger(name string) *slog.Logger {
+	return slog.New(r.Handler(name))
+}
+
 func (r *Controller) Handler(name string) slog.Handler {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()

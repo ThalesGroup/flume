@@ -191,7 +191,7 @@ func TestConfig_Configure(t *testing.T) {
 				mapstest.AssertContains(
 					t,
 					json.RawMessage(buf.Bytes()),
-					map[string]any{"source": map[string]any{"file": "handler_builder_test.go", "function": "TestConfig_Configure", "line": nil}},
+					map[string]any{"source": map[string]any{"file": "config_test.go", "function": "TestConfig_Configure", "line": nil}},
 					maps.StringContains(),
 					"AddSource should have been enabled: %v",
 					buf.String(),
@@ -203,7 +203,7 @@ func TestConfig_Configure(t *testing.T) {
 			conf: Config{
 				Levels: Levels{"*": slog.LevelWarn, "blue": slog.LevelInfo},
 			},
-			logFn: func(t *testing.T, l *slog.Logger, f *Controller) {
+			logFn: func(t *testing.T, l *slog.Logger, c *Controller) {
 				l.Info("hi")
 				assert.Empty(t, buf.String(), "default logger should only log warn and higher")
 
@@ -212,7 +212,7 @@ func TestConfig_Configure(t *testing.T) {
 				mapstest.AssertContains(t, json.RawMessage(buf.Bytes()), map[string]any{"msg": "bye"}, "warn should be have been logged, was %v", buf.String())
 
 				buf.Reset()
-				l2 := slog.New(f.Handler("blue"))
+				l2 := c.Logger("blue")
 				l2.Info("cya")
 				mapstest.AssertContains(t, json.RawMessage(buf.Bytes()), map[string]any{"msg": "cya", "logger": "blue"}, "blue logger should log info level, was %v", buf.String())
 			},
@@ -228,7 +228,7 @@ func TestConfig_Configure(t *testing.T) {
 			err := test.conf.Configure(ctl)
 			require.NoError(t, err)
 
-			l := slog.New(ctl.Handler(""))
+			l := ctl.Logger("")
 
 			if test.logFn != nil {
 				test.logFn(t, l, ctl)

@@ -15,5 +15,5 @@
   - [x] Factory -> ??? maybe "Controller"?
   - [x] handlerState -> state
   - [x] delegateHandler -> delegate
-- [ ] still not crazy about some of the names, in particular "conf" and "delegate".  and maybe "handler builder"
-- [ ] add convenience methods for creating a handler *and* creating a new logger from it.
+- [ ] still not crazy about some of the names, in particular "conf" and "delegate".  
+- [x] add convenience methods for creating a handler *and* creating a new logger from it.
