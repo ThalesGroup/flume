@@ -97,6 +97,23 @@ func TestConfig_UnmarshalJSON(t *testing.T) {
 			confJSON: `{"level":"err"}`,
 			expected: Config{DefaultLevel: slog.LevelError},
 		},
+		{
+			name:     "levels as map",
+			confJSON: `{"levels":{"inf":"INF","number":"1","nil":null,"debug":"DEBUG","true":true,"false":false,"rawInt":"-1","offset":"DBG-2","all":"all","empty":"","off":"off"}}`,
+			expected: Config{Levels: Levels{
+				"inf":    slog.LevelInfo,
+				"number": slog.LevelInfo + 1,
+				"nil":    slog.LevelInfo,
+				"debug":  slog.LevelDebug,
+				"true":   slog.Level(math.MinInt),
+				"false":  slog.Level(math.MaxInt),
+				"rawInt": slog.LevelInfo - 1,
+				"offset": slog.LevelDebug - 2,
+				"all":    slog.Level(math.MinInt),
+				"empty":  slog.LevelInfo,
+				"off":    slog.Level(math.MaxInt),
+			}},
+		},
 	}
 
 	for _, test := range tests {

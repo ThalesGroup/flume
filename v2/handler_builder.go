@@ -123,6 +123,7 @@ func (c *Config) UnmarshalJSON(bytes []byte) error {
 		config
 		DefaultLevel any   `json:"defaultLevel"`
 		Level        any   `json:"level"`
+		Levels       any   `json:"levels"`
 		AddSource    *bool `json:"addSource"`
 		AddCaller    *bool `json:"addCaller"`
 	}{}
@@ -146,6 +147,28 @@ func (c *Config) UnmarshalJSON(bytes []byte) error {
 		return err
 	}
 	s.config.DefaultLevel = level
+
+	switch lvls := s.Levels.(type) {
+	case nil:
+	case string:
+		err := s.config.Levels.UnmarshalText([]byte(lvls))
+		if err != nil {
+			return err
+		}
+	case map[string]any:
+		if len(lvls) > 0 {
+			s.config.Levels = Levels{}
+			for n, l := range lvls {
+				lvl, err := parseLevel(l)
+				if err != nil {
+					return err
+				}
+				s.config.Levels[n] = lvl
+			}
+		}
+	default:
+		return merry.Errorf("invalid level value: %v", s.Levels)
+	}
 
 	// for backward compat with v1, allow "addCaller" as
 	// an alias for "addSource"
