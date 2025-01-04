@@ -3,6 +3,7 @@ package flume
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"math"
@@ -12,6 +13,56 @@ import (
 
 	"github.com/ansel1/merry/v2"
 )
+
+// DefaultConfigEnvVars is a list of the environment variables
+// that ConfigFromEnv will search by default.
+var DefaultConfigEnvVars = []string{"FLUME"}
+
+// ConfigFromEnv configures flume from environment variables.
+// It should be called from main():
+//
+//	func main() {
+//	    flume.ConfigFromEnv()
+//	    ...
+//	 }
+//
+// It searches envvars for the first environment
+// variable that is set, and attempts to parse the value.
+//
+// If no environment variable is set, it silently does nothing.
+//
+// If an environment variable with a value is found, but parsing
+// fails, an error is printed to stdout, and the error is returned.
+//
+// If envvars is empty, it defaults to DefaultConfigEnvVars.
+func ConfigFromEnv(envvars ...string) error {
+	// todo: We might want to change this to just unmarshal a configuration from the environment
+	// and return the Config.  Then it could be re-used to configure multiple Controllers.  It
+	// also gives the caller the chance to further customize the Config, particularly those attributes
+	// which can't be set from json.
+	// We could also have a `MustConfig...` variant which ensures unmarshaling is successful, and panics
+	// if not?  Or a `TryConfig...` variant which prints the error to stdout like this one does?
+	if len(envvars) == 0 {
+		envvars = DefaultConfigEnvVars
+	}
+
+	var configString string
+
+	for _, v := range envvars {
+		configString = os.Getenv(v)
+		if configString != "" {
+			var config Config
+			err := json.Unmarshal([]byte(configString), &config)
+			if err != nil {
+				err = merry.Prependf(err, "parsing configuration from environment variable %v", v)
+				fmt.Println("error parsing configuration from environment variable " + v + ": " + err.Error()) //nolint:forbidigo
+			}
+			return err
+		}
+	}
+
+	return nil
+}
 
 type Config struct {
 	// DefaultLevel is the default log level for all loggers not

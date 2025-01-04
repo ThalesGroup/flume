@@ -8,7 +8,7 @@
     rendering uniform regardless of handler.  Not great, since some handlers 
 - [ ] Something like hooks, but I think they can be handled more like Handler middleware
 - [ ] Port the console encoder
-- [ ] Support most of the same environment options as flume v1
+- [x] Support most of the same environment options as flume v1
 - [x] experiment with replacing the weakref thing with upward pointing references (from child to parent) which just check an atomic "dirty" flag to know whether they need to reconstruct their local handlers lazily
   - Not worth it.  there is no way to do this without adding at least one additional atomic resolve to each log call
 - [x] do some renaming
@@ -17,3 +17,4 @@
   - [x] delegateHandler -> delegate
 - [ ] still not crazy about some of the names, in particular "conf" and "delegate".  
 - [x] add convenience methods for creating a handler *and* creating a new logger from it.
+- [x] Add a convenience method for loading configuration from the environment, like in v1

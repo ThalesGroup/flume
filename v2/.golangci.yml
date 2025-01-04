@@ -41,6 +41,7 @@ linters:
     - nlreturn           # kind of like this one, with a block size of 2, but can't get it to work right
     - godot              # consider turning this back on when I'm ready to policy the comments
     - mnd
+    - godox
 
 issues:
   # List of regexps of issue texts to exclude, empty list by default.
