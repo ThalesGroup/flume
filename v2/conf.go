@@ -7,16 +7,18 @@ import (
 )
 
 type conf struct {
-	name           string
-	lvl            *slog.LevelVar
-	customLvl      bool
-	delegate       slog.Handler
-	customDelegate bool
+	name                   string
+	lvl                    *slog.LevelVar
+	customLvl              bool
+	coreDelegate, delegate slog.Handler
+	customDelegate         bool
 	sync.Mutex
-	states map[*state]struct{}
+	states           map[*state]struct{}
+	middleware       []Middleware
+	globalMiddleware []Middleware
 }
 
-func (c *conf) setDelegate(delegate slog.Handler, isDefault bool) {
+func (c *conf) setCoreDelegate(delegate slog.Handler, isDefault bool) {
 	c.Lock()
 	defer c.Unlock()
 
@@ -30,10 +32,27 @@ func (c *conf) setDelegate(delegate slog.Handler, isDefault bool) {
 		delegate = noop
 	}
 
-	c.delegate = delegate
+	c.coreDelegate = delegate
+
+	c.rebuildDelegate()
+}
+
+// rebuildDelegate updates the delegate handler for all states associated with this configuration.
+// This function is not thread safe, and should only be called while holding the conf mutex.
+func (c *conf) rebuildDelegate() {
+	// apply middleware, first the local middleware, then global in reverse order
+	h := c.coreDelegate
+	for i := len(c.middleware) - 1; i >= 0; i-- {
+		h = c.middleware[i].Apply(h)
+	}
+	for i := len(c.globalMiddleware) - 1; i >= 0; i-- {
+		h = c.globalMiddleware[i].Apply(h)
+	}
+
+	c.delegate = h
 
 	for s := range c.states {
-		s.setDelegate(delegate)
+		s.setDelegate(c.delegate)
 	}
 }
 
@@ -48,6 +67,24 @@ func (c *conf) setLevel(l slog.Level, isDefault bool) {
 		c.customLvl = true
 		c.lvl.Set(l)
 	}
+}
+
+func (c *conf) use(middleware ...Middleware) {
+	c.Lock()
+	defer c.Unlock()
+
+	c.middleware = append(c.middleware, middleware...)
+
+	c.rebuildDelegate()
+}
+
+func (c *conf) setGlobalMiddleware(middleware []Middleware) {
+	c.Lock()
+	defer c.Unlock()
+
+	c.globalMiddleware = middleware
+
+	c.rebuildDelegate()
 }
 
 func (c *conf) newHandler(attrs []slog.Attr, groups []string) *handler {

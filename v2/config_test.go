@@ -9,6 +9,7 @@ import (
 	"math"
 	"strings"
 	"testing"
+	"time"
 
 	maps "github.com/ansel1/vespucci/v4"
 	"github.com/ansel1/vespucci/v4/mapstest"
@@ -17,7 +18,23 @@ import (
 )
 
 func TestDevDefaults(t *testing.T) {
-	require.Equal(t, Config{Encoding: EncodingTermColor, AddSource: true}, DevDefaults())
+	dd := DevDefaults()
+	dd.ReplaceAttrs = nil
+	require.Equal(t, Config{Encoding: EncodingTermColor, AddSource: true}, dd)
+	// todo: can't test equality for ReplaceAttr functions, so need to test with actual log messages for effects
+
+	dd = DevDefaults()
+	buf := bytes.NewBuffer(nil)
+	dd.Out = buf
+	dd.Encoding = "text"
+	dd.AddSource = false
+	h := dd.Handler()
+
+	tm := time.Date(2011, time.April, 29, 3, 30, 0, 0, time.UTC)
+	err := h.Handle(context.Background(), slog.NewRecord(tm, slog.LevelInfo, "hi", 0))
+	require.NoError(t, err)
+
+	assert.Equal(t, "time=03:30:00.000 level=INF msg=hi\n", buf.String())
 }
 
 func TestParseLevel(t *testing.T) {
@@ -105,13 +122,13 @@ func TestConfig_UnmarshalJSON(t *testing.T) {
 				"number": slog.LevelInfo + 1,
 				"nil":    slog.LevelInfo,
 				"debug":  slog.LevelDebug,
-				"true":   slog.Level(math.MinInt),
-				"false":  slog.Level(math.MaxInt),
+				"true":   LevelAll,
+				"false":  LevelOff,
 				"rawInt": slog.LevelInfo - 1,
 				"offset": slog.LevelDebug - 2,
-				"all":    slog.Level(math.MinInt),
+				"all":    LevelAll,
 				"empty":  slog.LevelInfo,
-				"off":    slog.Level(math.MaxInt),
+				"off":    LevelOff,
 			}},
 		},
 	}
@@ -127,6 +144,12 @@ func TestConfig_UnmarshalJSON(t *testing.T) {
 
 			require.NoError(t, err)
 
+			// can't compare functions with equals, so the best we can do to check
+			// the equality of the ReplaceAttrs slice is compare the len
+			//
+			assert.Len(t, c.ReplaceAttrs, len(test.expected.ReplaceAttrs))
+			c.ReplaceAttrs = nil
+			test.expected.ReplaceAttrs = nil
 			assert.Equal(t, test.expected, c)
 		})
 	}

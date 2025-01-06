@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -79,8 +78,9 @@ type Config struct {
 	// AddSource causes the handler to compute the source code position
 	// of the log statement and add a SourceKey attribute to the output.
 	// Defaults to true when the Development flag is set, false otherwise.
-	AddSource bool `json:"addSource,omitempty"`
-	Out       io.Writer
+	AddSource    bool `json:"addSource,omitempty"`
+	Out          io.Writer
+	ReplaceAttrs []func([]string, slog.Attr) slog.Attr
 }
 
 const (
@@ -93,8 +93,19 @@ func DevDefaults() Config {
 	return Config{
 		Encoding:  "term-color",
 		AddSource: true,
+		ReplaceAttrs: []func(groups []string, a slog.Attr) slog.Attr{
+			AbbreviateLevel,
+			SimpleTime(),
+		},
 	}
 }
+
+const (
+	dbgAbbrev = "DBG"
+	infAbbrev = "INF"
+	wrnAbbrev = "WRN"
+	errAbbrev = "ERR"
+)
 
 var levelAbbreviations = map[slog.Level]string{
 	slog.LevelDebug: "DBG",
@@ -118,9 +129,9 @@ func parseLevel(v any) (slog.Level, error) {
 		return slog.Level(v), nil
 	case bool:
 		if v {
-			return slog.Level(math.MinInt), nil
+			return LevelAll, nil
 		}
-		return slog.Level(math.MaxInt), nil
+		return LevelOff, nil
 	default:
 		return 0, errors.New("levels must be a string or int value")
 	}
@@ -135,11 +146,11 @@ func parseLevel(v any) (slog.Level, error) {
 	// some special values
 	switch s {
 	case "ALL":
-		return slog.Level(math.MinInt), nil
+		return LevelAll, nil
 	case "":
 		return slog.LevelInfo, nil // default
 	case "OFF":
-		return slog.Level(math.MaxInt), nil
+		return LevelOff, nil
 	}
 
 	// convert abbreviations to full length values
@@ -236,20 +247,15 @@ func (c *Config) UnmarshalJSON(bytes []byte) error {
 	return nil
 }
 
-func (c *Config) Configure(f *Controller) error {
-	f.SetDefaultLevel(c.DefaultLevel)
-
-	for name, level := range c.Levels {
-		f.SetLevel(name, level)
-	}
-
+func (c *Config) Handler() slog.Handler {
 	out := c.Out
 	if out == nil {
 		out = os.Stdout
 	}
 
 	opts := slog.HandlerOptions{
-		AddSource: c.AddSource,
+		AddSource:   c.AddSource,
+		ReplaceAttr: ChainReplaceAttrs(c.ReplaceAttrs...),
 	}
 
 	var handler slog.Handler
@@ -263,7 +269,17 @@ func (c *Config) Configure(f *Controller) error {
 		handler = slog.NewJSONHandler(out, &opts)
 	}
 
-	f.SetDefaultDelegate(handler)
+	return handler
+}
+
+func (c *Config) Configure(ctl *Controller) error {
+	ctl.SetDefaultLevel(c.DefaultLevel)
+
+	for name, level := range c.Levels {
+		ctl.SetLevel(name, level)
+	}
+
+	ctl.SetDefaultDelegate(c.Handler())
 
 	return nil
 }
@@ -287,9 +303,9 @@ func (l *Levels) MarshalText() ([]byte, error) {
 	directives := make([]string, 0, len(*l))
 	for name, level := range *l {
 		switch level {
-		case slog.Level(math.MaxInt):
+		case LevelOff:
 			directives = append(directives, "-"+name)
-		case slog.Level(math.MinInt):
+		case LevelAll:
 			directives = append(directives, name)
 		default:
 			directives = append(directives, name+"="+level.String())
@@ -316,9 +332,9 @@ func parseLevels(s string) (map[string]slog.Level, error) {
 		case 1:
 			name := parts[0]
 			if strings.HasPrefix(name, "-") {
-				m[name[1:]] = slog.Level(math.MaxInt)
+				m[name[1:]] = LevelOff
 			} else {
-				m[name] = slog.Level(math.MinInt)
+				m[name] = LevelAll
 			}
 		case 2:
 			var err error

@@ -20,6 +20,17 @@ linters-settings:
 
   exhaustive:
     default-signifies-exhaustive: true
+
+  inamedparam:
+    skip-single-param: true
+
+  ireturn:
+    allow:
+      - anon
+      - empty
+      - stdlib
+      - error
+      - flume\/v2\.Middleware$
   
 linters:
   # to try out individual linters: golangci-lint run -E gocyclo,gosimple

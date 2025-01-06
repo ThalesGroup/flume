@@ -5,7 +5,10 @@ import (
 	"sync"
 )
 
-const loggerNameKey = "logger"
+const (
+	loggerNameKey = "logger"
+	allHandlers   = "*"
+)
 
 // Controller is a log management core.  It spawns named slog.Handlers.  These named handlers
 // add a `logger=<name>` attribute to each log entry.  The Controller can dynamically (at runtime)
@@ -20,9 +23,9 @@ const loggerNameKey = "logger"
 // Package-level functions mirror of most of Controller's methods, which delegate to a
 // default package-level Controller.
 type Controller struct {
-	defaultLevel slog.Level
-
-	defaultDelegate slog.Handler
+	defaultLevel      slog.Level
+	defaultDelegate   slog.Handler
+	defaultMiddleware []Middleware
 
 	confs map[string]*conf
 	mutex sync.Mutex
@@ -32,83 +35,103 @@ func NewController(delegateHandler slog.Handler) *Controller {
 	return &Controller{defaultDelegate: delegateHandler}
 }
 
-func (r *Controller) Logger(name string) *slog.Logger {
-	return slog.New(r.Handler(name))
+func (c *Controller) Logger(name string) *slog.Logger {
+	return slog.New(c.Handler(name))
 }
 
-func (r *Controller) Handler(name string) slog.Handler {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
+func (c *Controller) Handler(name string) slog.Handler {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 
-	return r.conf(name).newHandler([]slog.Attr{slog.String(loggerNameKey, name)}, nil)
+	return c.conf(name).newHandler([]slog.Attr{slog.String(loggerNameKey, name)}, nil)
 }
 
-func (r *Controller) conf(name string) *conf {
-	cfg, ok := r.confs[name]
+func (c *Controller) conf(name string) *conf {
+	cfg, ok := c.confs[name]
 	if !ok {
 		levelVar := &slog.LevelVar{}
-		levelVar.Set(r.defaultLevel)
+		levelVar.Set(c.defaultLevel)
 		cfg = &conf{
-			name:   name,
-			lvl:    levelVar,
-			states: map[*state]struct{}{},
+			name:             name,
+			lvl:              levelVar,
+			states:           map[*state]struct{}{},
+			globalMiddleware: c.defaultMiddleware,
 		}
-		cfg.setDelegate(r.defaultDelegate, true)
-		if r.confs == nil {
-			r.confs = map[string]*conf{}
+		cfg.setCoreDelegate(c.defaultDelegate, true)
+		if c.confs == nil {
+			c.confs = map[string]*conf{}
 		}
-		r.confs[name] = cfg
+		c.confs[name] = cfg
 	}
 
 	return cfg
 }
 
 // SetDelegate configures the default delegate handler
-func (r *Controller) SetDelegate(handlerName string, handler slog.Handler) {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
+func (c *Controller) SetDelegate(handlerName string, handler slog.Handler) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 
-	r.conf(handlerName).setDelegate(handler, false)
+	if handlerName != allHandlers {
+		c.conf(handlerName).setCoreDelegate(handler, false)
+		return
+	}
+
+	c.defaultDelegate = handler
+
+	for _, h := range c.confs {
+		h.setCoreDelegate(handler, true)
+	}
 }
 
-func (r *Controller) SetDefaultDelegate(handler slog.Handler) {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	r.defaultDelegate = handler
-
-	for _, h := range r.confs {
-		h.setDelegate(handler, true)
-	}
+func (c *Controller) SetDefaultDelegate(handler slog.Handler) {
+	c.SetDelegate(allHandlers, handler)
 }
 
 // SetLevel sets the log level for a particular named logger.  All handlers with this same
 // are affected, in the past or future.
-func (r *Controller) SetLevel(handlerName string, l slog.Level) {
-	if handlerName == "*" {
-		r.SetDefaultLevel(l)
+func (c *Controller) SetLevel(name string, l slog.Level) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	if name != allHandlers {
+		c.conf(name).setLevel(l, false)
 		return
 	}
 
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	r.conf(handlerName).setLevel(l, false)
-}
-
-// SetDefaultLevel sets the default log level for all handlers which don't have a specific level
-// assigned to them
-func (r *Controller) SetDefaultLevel(l slog.Level) {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
-	r.defaultLevel = l
+	c.defaultLevel = l
 
 	// iterating over all handlers, inside a mutex, is slow, and made slower still
 	// by each handler locking its own mutex.  But setting levels happens very rarely,
 	// while reading the handler's level happens each time a log function is called.  So
 	// we optimize for that path, which requires only a single atomic load.
-	for _, h := range r.confs {
+	for _, h := range c.confs {
 		h.setLevel(l, true)
 	}
+}
+
+// SetDefaultLevel sets the default log level for all handlers which don't have a specific level
+// assigned to them
+func (c *Controller) SetDefaultLevel(l slog.Level) {
+	c.SetLevel(allHandlers, l)
+}
+
+func (c *Controller) Use(name string, middleware ...Middleware) {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	if name != allHandlers {
+		c.conf(name).use(middleware...)
+		return
+	}
+
+	c.defaultMiddleware = append(c.defaultMiddleware, middleware...)
+
+	for _, conf := range c.confs {
+		conf.setGlobalMiddleware(c.defaultMiddleware)
+	}
+}
+
+func (c *Controller) UseDefault(middleware ...Middleware) {
+	c.Use(allHandlers, middleware...)
 }

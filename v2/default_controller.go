@@ -2,19 +2,18 @@ package flume
 
 import (
 	"log/slog"
+	"math"
 	"sync/atomic"
 )
 
-var defaultFactory atomic.Pointer[Controller]
-
-//nolint:gochecknoinits
-func init() {
-	defaultFactory.Store(NewController(slog.Default().Handler()))
-}
-
-func deflt() *Controller {
-	return defaultFactory.Load()
-}
+const (
+	LevelDebug = slog.LevelDebug
+	LevelInfo  = slog.LevelInfo
+	LevelWarn  = slog.LevelWarn
+	LevelError = slog.LevelError
+	LevelOff   = slog.Level(math.MaxInt)
+	LevelAll   = slog.Level(math.MinInt)
+)
 
 func New(name string) *slog.Logger {
 	return deflt().Logger(name)
@@ -38,4 +37,23 @@ func SetLevel(name string, l slog.Level) {
 
 func SetDefaultLevel(l slog.Level) {
 	deflt().SetDefaultLevel(l)
+}
+
+func Use(name string, middleware ...Middleware) {
+	deflt().Use(name, middleware...)
+}
+
+func UseDefault(middleware ...Middleware) {
+	deflt().UseDefault(middleware...)
+}
+
+var defaultFactory atomic.Pointer[Controller]
+
+//nolint:gochecknoinits
+func init() {
+	defaultFactory.Store(NewController(slog.Default().Handler()))
+}
+
+func deflt() *Controller {
+	return defaultFactory.Load()
 }

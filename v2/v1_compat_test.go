@@ -2,6 +2,7 @@ package flume
 
 import (
 	"bytes"
+	"errors"
 	"log/slog"
 	"testing"
 
@@ -27,6 +28,51 @@ func appendString(key, value string) func(groups []string, a slog.Attr) slog.Att
 // 		return a
 // 	}
 // }
+
+func TestBareAttr(t *testing.T) {
+	tests := []struct {
+		name     string
+		wantText string
+		args     []any
+	}{
+		{
+			name:     "bare value",
+			wantText: "level=INFO msg=hi logger=blue value=chocolate\n",
+			args:     []any{"chocolate"},
+		},
+		{
+			name:     "bare error",
+			wantText: "level=INFO msg=hi logger=blue error=boom\n",
+			args:     []any{errors.New("boom")},
+		},
+		{
+			name:     "only works when len(args)==1",
+			wantText: "level=INFO msg=hi logger=blue size=5 !BADKEY=chocolate\n",
+			args:     []any{"size", 5, "chocolate"},
+		},
+	}
+
+	for test := range tests {
+		t.Run(tests[test].name, func(t *testing.T) {
+			buf := bytes.NewBuffer(nil)
+
+			ctl := NewController(nil)
+			c := Config{
+				Encoding: "text",
+				ReplaceAttrs: []func(groups []string, a slog.Attr) slog.Attr{
+					removeKeys(slog.TimeKey),
+				},
+				Out: buf,
+			}
+			c.Configure(ctl)
+
+			ctl.Use("*", BareAttr())
+
+			ctl.Logger("blue").Info("hi", tests[test].args...)
+			assert.Equal(t, tests[test].wantText, buf.String())
+		})
+	}
+}
 
 func TestChainReplaceAttrs(t *testing.T) {
 	tests := []struct {

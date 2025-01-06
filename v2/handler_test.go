@@ -402,9 +402,9 @@ func TestLevels(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			buf := bytes.NewBuffer(nil)
-			f := NewController(slog.NewJSONHandler(buf, &slog.HandlerOptions{ReplaceAttr: removeKeys(slog.TimeKey)}))
+			ctl := NewController(slog.NewJSONHandler(buf, &slog.HandlerOptions{ReplaceAttr: removeKeys(slog.TimeKey)}))
 
-			l := slog.New(test.handlerFunc(t, f))
+			l := slog.New(test.handlerFunc(t, ctl))
 			l.Log(context.Background(), test.level, "hi")
 			if test.wantJSON == "" {
 				assert.Empty(t, buf.String())
@@ -435,7 +435,7 @@ func TestAttrs(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			buf := bytes.NewBuffer(nil)
+	buf := bytes.NewBuffer(nil)
 			f := NewController(slog.NewTextHandler(buf, &slog.HandlerOptions{ReplaceAttr: removeKeys(slog.TimeKey)}))
 
 			l := slog.New(f.Handler("blue"))

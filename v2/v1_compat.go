@@ -8,8 +8,8 @@ import (
 const badKey = "!BADKEY"
 
 // BareAttr
-func BareAttr() func(slog.Handler) slog.Handler {
-	return NewMiddleware(func(ctx context.Context, record slog.Record, next slog.Handler) error {
+func BareAttr() Middleware {
+	return HandlerMiddlewareFunc(func(ctx context.Context, record slog.Record, next slog.Handler) error {
 		// if the record only has a single attr, and that attr was added without a matching
 		// key, slog will set the key to "!BADKEY".  In flume v1, we added attrs like that
 		// with an underscore as the key.
@@ -23,11 +23,16 @@ func BareAttr() func(slog.Handler) slog.Handler {
 				return false
 			}
 
+			// slog.Record has no means to
+			record = slog.NewRecord(record.Time, record.Level, record.Message, record.PC)
+
 			if _, ok := asError(attr.Value); ok {
 				attr.Key = "error"
 			} else {
 				attr.Key = "value"
 			}
+
+			record.AddAttrs(attr)
 
 			// stop immediately, we only care about the first attr
 			return false
@@ -44,6 +49,42 @@ func asError(value slog.Value) (error, bool) { //nolint:revive
 
 	err, ok := value.Any().(error)
 	return err, ok
+}
+
+func AbbreviateLevel(_ []string, attr slog.Attr) slog.Attr {
+	if attr.Value.Kind() == slog.KindAny {
+		if lvl, ok := attr.Value.Any().(slog.Level); ok {
+			strLvl := lvl.String()
+			if len(strLvl) > 0 {
+				switch strLvl[0] {
+				case 'D':
+					strLvl = dbgAbbrev + strLvl[5:]
+				case 'W':
+					strLvl = wrnAbbrev + strLvl[4:]
+				case 'E':
+					strLvl = errAbbrev + strLvl[5:]
+				case 'I':
+					strLvl = infAbbrev + strLvl[4:]
+				}
+			}
+			attr.Value = slog.StringValue(strLvl)
+		}
+	}
+
+	return attr
+}
+
+func FormatTimes(format string) func([]string, slog.Attr) slog.Attr {
+	return func(_ []string, a slog.Attr) slog.Attr {
+		if a.Value.Kind() == slog.KindTime {
+			a.Value = slog.StringValue(a.Value.Time().Format(format))
+		}
+		return a
+	}
+}
+
+func SimpleTime() func(s []string, a slog.Attr) slog.Attr {
+	return FormatTimes("15:04:05.000")
 }
 
 // func V1Compat() func(slog.Handler) slog.Handler {
@@ -140,38 +181,48 @@ func ChainReplaceAttrs(fns ...func([]string, slog.Attr) slog.Attr) func([]string
 // 	})
 // }
 
-func NewMiddleware(handleFn func(ctx context.Context, record slog.Record, next slog.Handler) error) func(slog.Handler) slog.Handler {
-	return func(inner slog.Handler) slog.Handler {
-		return &HandlerMiddleware{
-			inner:    inner,
-			handleFn: handleFn,
-		}
+type Middleware interface {
+	Apply(slog.Handler) slog.Handler
+}
+
+type MiddlewareFunc func(slog.Handler) slog.Handler
+
+func (f MiddlewareFunc) Apply(h slog.Handler) slog.Handler {
+	return f(h)
+}
+
+func (f HandlerMiddlewareFunc) Apply(h slog.Handler) slog.Handler {
+	return &middlewareHandler{
+		next:       h,
+		middleware: f,
 	}
 }
 
-type HandlerMiddleware struct {
-	inner    slog.Handler
-	handleFn func(ctx context.Context, record slog.Record, next slog.Handler) error
+type HandlerMiddlewareFunc func(ctx context.Context, record slog.Record, next slog.Handler) error
+
+type middlewareHandler struct {
+	next       slog.Handler
+	middleware func(ctx context.Context, record slog.Record, next slog.Handler) error
 }
 
-func (h *HandlerMiddleware) Enabled(ctx context.Context, level slog.Level) bool {
-	return h.inner.Enabled(ctx, level)
+func (h *middlewareHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return h.next.Enabled(ctx, level)
 }
 
-func (h *HandlerMiddleware) Handle(ctx context.Context, record slog.Record) error {
-	return h.handleFn(ctx, record, h.inner)
+func (h *middlewareHandler) Handle(ctx context.Context, record slog.Record) error {
+	return h.middleware(ctx, record, h.next)
 }
 
-func (h *HandlerMiddleware) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return &HandlerMiddleware{
-		inner:    h.inner.WithAttrs(attrs),
-		handleFn: h.handleFn,
+func (h *middlewareHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &middlewareHandler{
+		next:       h.next.WithAttrs(attrs),
+		middleware: h.middleware,
 	}
 }
 
-func (h *HandlerMiddleware) WithGroup(name string) slog.Handler {
-	return &HandlerMiddleware{
-		inner:    h.inner.WithGroup(name),
-		handleFn: h.handleFn,
+func (h *middlewareHandler) WithGroup(name string) slog.Handler {
+	return &middlewareHandler{
+		next:       h.next.WithGroup(name),
+		middleware: h.middleware,
 	}
 }
