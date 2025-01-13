@@ -3,7 +3,6 @@ package flume
 import (
 	"bytes"
 	"context"
-	"errors"
 	"log/slog"
 	"os"
 	"runtime"
@@ -411,36 +410,6 @@ func TestLevels(t *testing.T) {
 			} else {
 				assert.JSONEq(t, test.wantJSON, buf.String())
 			}
-		})
-	}
-}
-
-func TestAttrs(t *testing.T) {
-	tests := []struct {
-		name     string
-		wantText string
-		args     []any
-	}{
-		{
-			name:     "bare value",
-			wantText: "level=INFO msg=hi logger=blue !BADKEY=green\n",
-			args:     []any{"green"},
-		},
-		{
-			name:     "bare error",
-			wantText: "level=INFO msg=hi logger=blue !BADKEY=boom\n",
-			args:     []any{errors.New("boom")},
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-	buf := bytes.NewBuffer(nil)
-			f := NewController(slog.NewTextHandler(buf, &slog.HandlerOptions{ReplaceAttr: removeKeys(slog.TimeKey)}))
-
-			l := slog.New(f.Handler("blue"))
-			l.Info("hi", test.args...)
-			assert.Equal(t, test.wantText, buf.String())
 		})
 	}
 }

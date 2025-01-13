@@ -31,7 +31,7 @@ linters-settings:
       - stdlib
       - error
       - flume\/v2\.Middleware$
-  
+
 linters:
   # to try out individual linters: golangci-lint run -E gocyclo,gosimple
   enable-all: true
@@ -53,7 +53,7 @@ linters:
     - godot              # consider turning this back on when I'm ready to policy the comments
     - mnd
     - godox
-
+    - recvcheck          # good idea, but can't get it to ignore UnmarshalXXX functions
 issues:
   # List of regexps of issue texts to exclude, empty list by default.
   # But independently from this option we use default exclude patterns,

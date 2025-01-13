@@ -2,73 +2,76 @@ package flume
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log/slog"
 )
 
-const badKey = "!BADKEY"
+// const badKey = "!BADKEY"
 
-// BareAttr
-func BareAttr() Middleware {
-	return HandlerMiddlewareFunc(func(ctx context.Context, record slog.Record, next slog.Handler) error {
-		// if the record only has a single attr, and that attr was added without a matching
-		// key, slog will set the key to "!BADKEY".  In flume v1, we added attrs like that
-		// with an underscore as the key.
+// Looks like this isn't needed.  New govet rules make the compiler enforce arg pairs to slog methods,
+// so it's pretty hard now to pass a bare arg.
+// func BareAttr() Middleware {
+// 	return HandlerMiddlewareFunc(func(ctx context.Context, record slog.Record, next slog.Handler) error {
+// 		// if the record only has a single attr, and that attr was added without a matching
+// 		// key, slog will set the key to "!BADKEY".  In flume v1, we added attrs like that
+// 		// with an underscore as the key.
+//
+// 		if record.NumAttrs() != 1 {
+// 			return next.Handle(ctx, record)
+// 		}
+//
+// 		record.Attrs(func(attr slog.Attr) bool {
+// 			if attr.Key != badKey {
+// 				return false
+// 			}
+//
+// 			// slog.Record has no means to
+// 			record = slog.NewRecord(record.Time, record.Level, record.Message, record.PC)
+//
+// 			if _, ok := asError(attr.Value); ok {
+// 				attr.Key = "error"
+// 			} else {
+// 				attr.Key = "value"
+// 			}
+//
+// 			record.AddAttrs(attr)
+//
+// 			// stop immediately, we only care about the first attr
+// 			return false
+// 		})
+//
+// 		return next.Handle(ctx, record)
+// 	})
+// }
 
-		if record.NumAttrs() != 1 {
-			return next.Handle(ctx, record)
-		}
-
-		record.Attrs(func(attr slog.Attr) bool {
-			if attr.Key != badKey {
-				return false
-			}
-
-			// slog.Record has no means to
-			record = slog.NewRecord(record.Time, record.Level, record.Message, record.PC)
-
-			if _, ok := asError(attr.Value); ok {
-				attr.Key = "error"
-			} else {
-				attr.Key = "value"
-			}
-
-			record.AddAttrs(attr)
-
-			// stop immediately, we only care about the first attr
-			return false
-		})
-
-		return next.Handle(ctx, record)
-	})
-}
-
-func asError(value slog.Value) (error, bool) { //nolint:revive
-	if value.Kind() != slog.KindAny {
-		return nil, false
-	}
-
-	err, ok := value.Any().(error)
-	return err, ok
-}
+// func asError(value slog.Value) (error, bool) { //nolint:revive
+// 	if value.Kind() != slog.KindAny {
+// 		return nil, false
+// 	}
+//
+// 	err, ok := value.Any().(error)
+// 	return err, ok
+// }
 
 func AbbreviateLevel(_ []string, attr slog.Attr) slog.Attr {
-	if attr.Value.Kind() == slog.KindAny {
-		if lvl, ok := attr.Value.Any().(slog.Level); ok {
-			strLvl := lvl.String()
-			if len(strLvl) > 0 {
-				switch strLvl[0] {
-				case 'D':
-					strLvl = dbgAbbrev + strLvl[5:]
-				case 'W':
-					strLvl = wrnAbbrev + strLvl[4:]
-				case 'E':
-					strLvl = errAbbrev + strLvl[5:]
-				case 'I':
-					strLvl = infAbbrev + strLvl[4:]
-				}
-			}
-			attr.Value = slog.StringValue(strLvl)
+	if attr.Value.Kind() != slog.KindAny {
+		return attr
+	}
+
+	if lvl, ok := attr.Value.Any().(slog.Level); ok {
+		strLvl := lvl.String()
+		switch strLvl[0] {
+		case 'D':
+			strLvl = dbgAbbrev + strLvl[5:]
+		case 'W':
+			strLvl = wrnAbbrev + strLvl[4:]
+		case 'E':
+			strLvl = errAbbrev + strLvl[5:]
+		case 'I':
+			strLvl = infAbbrev + strLvl[4:]
 		}
+		attr.Value = slog.StringValue(strLvl)
 	}
 
 	return attr
@@ -83,8 +86,43 @@ func FormatTimes(format string) func([]string, slog.Attr) slog.Attr {
 	}
 }
 
-func SimpleTime() func(s []string, a slog.Attr) slog.Attr {
+func SimpleTime() func([]string, slog.Attr) slog.Attr {
 	return FormatTimes("15:04:05.000")
+}
+
+type detailedJSONError struct {
+	error
+}
+
+func (e detailedJSONError) MarshalJSON() ([]byte, error) {
+	return json.Marshal(fmt.Sprintf("%+v", e.error)) //nolint:wrapcheck
+}
+
+// DetailedErrors is a ReplaceAttr function which ensures that errors
+// implement fmt.Formatter are rendered the same by the JSONHandler as
+// by the TextHandler.  By default, the slog.JSONHandler renders errors
+// as err.Error(), where as the slog.TextHandler will render it with
+// fmt.Sprintf("%+v", err).
+//
+// When using DetailedErrors, if any error values implement fmt.Formatter (
+// and therefore *may* implement some form of detailed error printing), and
+// *do not* already implement json.Marshaler, then the value is wrapped in
+// an error implementation which implements json.Marshaler, and marshals
+// the error to a string using fmt.Sprintf("%+v", err).
+func DetailedErrors(_ []string, a slog.Attr) slog.Attr {
+	if a.Value.Kind() != slog.KindAny {
+		return a
+	}
+
+	if err, ok := a.Value.Any().(error); ok {
+		if _, ok = err.(fmt.Formatter); ok {
+			if _, ok = err.(json.Marshaler); !ok {
+				a.Value = slog.AnyValue(detailedJSONError{err})
+			}
+		}
+	}
+
+	return a
 }
 
 // func V1Compat() func(slog.Handler) slog.Handler {

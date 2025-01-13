@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +21,11 @@ import (
 )
 
 func TestDevDefaults(t *testing.T) {
+	pc, file, line, _ := runtime.Caller(0)
+	cwd, _ := os.Getwd()
+	file, _ = filepath.Rel(cwd, file)
+	sourceField := fmt.Sprintf("%s:%d", file, line)
+
 	dd := DevDefaults()
 	dd.ReplaceAttrs = nil
 	require.Equal(t, Config{Encoding: EncodingTermColor, AddSource: true}, dd)
@@ -26,15 +34,16 @@ func TestDevDefaults(t *testing.T) {
 	dd = DevDefaults()
 	buf := bytes.NewBuffer(nil)
 	dd.Out = buf
-	dd.Encoding = "text"
-	dd.AddSource = false
+	dd.Encoding = "term" // remove color for the purposes of this test
 	h := dd.Handler()
 
 	tm := time.Date(2011, time.April, 29, 3, 30, 0, 0, time.UTC)
-	err := h.Handle(context.Background(), slog.NewRecord(tm, slog.LevelInfo, "hi", 0))
+	rec := slog.NewRecord(tm, slog.LevelInfo, "foobar", pc)
+	rec.Add("logger", "flume", "size", 5)
+	err := h.Handle(context.Background(), rec)
 	require.NoError(t, err)
 
-	assert.Equal(t, "time=03:30:00.000 level=INF msg=hi\n", buf.String())
+	assert.Equal(t, "03:30:00.000 INF "+sourceField+" flume > foobar size=5\n", buf.String())
 }
 
 func TestParseLevel(t *testing.T) {

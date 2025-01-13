@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/ansel1/merry/v2"
+	"github.com/phsym/console-slog"
 )
 
 // DefaultConfigEnvVars is a list of the environment variables
@@ -93,10 +94,6 @@ func DevDefaults() Config {
 	return Config{
 		Encoding:  "term-color",
 		AddSource: true,
-		ReplaceAttrs: []func(groups []string, a slog.Attr) slog.Attr{
-			AbbreviateLevel,
-			SimpleTime(),
-		},
 	}
 }
 
@@ -247,7 +244,7 @@ func (c *Config) UnmarshalJSON(bytes []byte) error {
 	return nil
 }
 
-func (c *Config) Handler() slog.Handler {
+func (c Config) Handler() slog.Handler {
 	out := c.Out
 	if out == nil {
 		out = os.Stdout
@@ -261,8 +258,25 @@ func (c *Config) Handler() slog.Handler {
 	var handler slog.Handler
 
 	switch c.Encoding {
-	case "text":
+	case "text", "console":
 		handler = slog.NewTextHandler(out, &opts)
+	case "term":
+		handler = console.NewHandler(out, &console.HandlerOptions{
+			AddSource:   c.AddSource,
+			Theme:       console.NewDimTheme(),
+			ReplaceAttr: ChainReplaceAttrs(c.ReplaceAttrs...),
+			TimeFormat:  "15:04:05.000",
+			Headers:     []string{"logger"},
+			NoColor:     true,
+		})
+	case "term-color":
+		handler = console.NewHandler(out, &console.HandlerOptions{
+			AddSource:   c.AddSource,
+			Theme:       console.NewDimTheme(),
+			ReplaceAttr: ChainReplaceAttrs(c.ReplaceAttrs...),
+			TimeFormat:  "15:04:05.000",
+			Headers:     []string{"logger"},
+		})
 	case "json":
 		fallthrough
 	default:
@@ -272,7 +286,7 @@ func (c *Config) Handler() slog.Handler {
 	return handler
 }
 
-func (c *Config) Configure(ctl *Controller) error {
+func (c Config) Configure(ctl *Controller) error {
 	ctl.SetDefaultLevel(c.DefaultLevel)
 
 	for name, level := range c.Levels {
