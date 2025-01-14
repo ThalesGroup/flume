@@ -18,7 +18,7 @@ type state struct {
 	groups []string
 
 	// atomic pointer to handler delegate
-	delegateHandlerPtr atomic.Pointer[slog.Handler]
+	delegatePtr atomic.Pointer[slog.Handler]
 
 	// should be reference to the levelVar in the parent conf
 	level *slog.LevelVar
@@ -35,11 +35,11 @@ func (s *state) setDelegate(delegate slog.Handler) {
 		delegate = delegate.WithGroup(g)
 	}
 
-	s.delegateHandlerPtr.Store(&delegate)
+	s.delegatePtr.Store(&delegate)
 }
 
-func (s *state) delegateHandler() slog.Handler {
-	handlerRef := s.delegateHandlerPtr.Load()
+func (s *state) delegate() slog.Handler {
+	handlerRef := s.delegatePtr.Load()
 	return *handlerRef
 }
 
@@ -56,7 +56,7 @@ func (s *state) Enabled(_ context.Context, level slog.Level) bool {
 }
 
 func (s *state) Handle(ctx context.Context, record slog.Record) error {
-	return s.delegateHandler().Handle(ctx, record)
+	return s.delegate().Handle(ctx, record)
 }
 
 // Env Config options:

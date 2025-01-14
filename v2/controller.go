@@ -10,35 +10,49 @@ const (
 	allHandlers   = "*"
 )
 
-// Controller is a log management core.  It spawns named slog.Handlers.  These named handlers
-// add a `logger=<name>` attribute to each log entry.  The Controller can dynamically (at runtime)
-// reconfigure these named handlers.  For example, the Controller can change the log level of a
-// particular named handler.
+// Controller is the core of flume.  It creates and controls a set of flume slog.Handlers.
 //
-// Named handlers ultimately delegate handling log entries to an underlying delegate slog.Handler.  The
-// Controller has a default delegate slog.Handler to which all named handlers spawned by the Controller
-// will send their log entries.  The Controller also allows overriding the default delegate handler
-// for particular named handlers.
+// Flume handlers have a name (assigned during creation), and they
+// add a `logger=<name>` attribute to each log entry.
+//
+// The Controller controls the log level and sink
+// for all the flume handlers it controls, and can reconfigure them at runtime.
+//
+// Flume handlers ultimately delegate log records to an underlying `sink` slog.Handler.  The
+// Controller has a default sink to which all flume handlers managed by the Controller
+// will send their log records.  The Controller also allows overriding the default sink
+// for particular flume handlers.
 //
 // Package-level functions mirror of most of Controller's methods, which delegate to a
 // default package-level Controller.
 type Controller struct {
 	defaultLevel      slog.Level
-	defaultDelegate   slog.Handler
+	defaultSink       slog.Handler
 	defaultMiddleware []Middleware
 
 	confs map[string]*conf
 	mutex sync.Mutex
 }
 
-func NewController(delegateHandler slog.Handler) *Controller {
-	return &Controller{defaultDelegate: delegateHandler}
+// NewController creates a new flume Controller with the specified default sink
+// handler.
+func NewController(sink slog.Handler) *Controller {
+	return &Controller{defaultSink: sink}
 }
 
+// Logger is a convenience method for creating new slog.Loggers.  Equiavalent
+// to `slog.New(c.Handler(name))`.
+// Example:
+//
+//	logger := c.Logger(name)
 func (c *Controller) Logger(name string) *slog.Logger {
 	return slog.New(c.Handler(name))
 }
 
+// Handler creates a new handler with the given name.
+// Example:
+//
+//	logger := slog.New(c.Handler(name))
 func (c *Controller) Handler(name string) slog.Handler {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -46,6 +60,11 @@ func (c *Controller) Handler(name string) slog.Handler {
 	return c.conf(name).newHandler([]slog.Attr{slog.String(loggerNameKey, name)}, nil)
 }
 
+// conf locates or creates a new conf for the given name.  The Controller
+// maintains one conf instance for each name registered with the controller.
+// The conf stores the configuration for that name (sink, middleware, log level),
+// and maintains a set of weak refs to handlers which have been created, signalling
+// those handlers when the configuration changes.
 func (c *Controller) conf(name string) *conf {
 	cfg, ok := c.confs[name]
 	if !ok {
@@ -57,7 +76,7 @@ func (c *Controller) conf(name string) *conf {
 			states:           map[*state]struct{}{},
 			globalMiddleware: c.defaultMiddleware,
 		}
-		cfg.setCoreDelegate(c.defaultDelegate, true)
+		cfg.setSink(c.defaultSink, true)
 		if c.confs == nil {
 			c.confs = map[string]*conf{}
 		}
@@ -67,29 +86,32 @@ func (c *Controller) conf(name string) *conf {
 	return cfg
 }
 
-// SetDelegate configures the default delegate handler
-func (c *Controller) SetDelegate(handlerName string, handler slog.Handler) {
+// SetSink configures flume handlers with the given name to use the given sink, overriding
+// the default sink.
+func (c *Controller) SetSink(name string, sink slog.Handler) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	if handlerName != allHandlers {
-		c.conf(handlerName).setCoreDelegate(handler, false)
+	if name != allHandlers {
+		c.conf(name).setSink(sink, false)
 		return
 	}
 
-	c.defaultDelegate = handler
+	c.defaultSink = sink
 
 	for _, h := range c.confs {
-		h.setCoreDelegate(handler, true)
+		h.setSink(sink, true)
 	}
 }
 
-func (c *Controller) SetDefaultDelegate(handler slog.Handler) {
-	c.SetDelegate(allHandlers, handler)
+// SetDefaultSink configures the default sink handler for all flume handlers managed
+// by this controller.
+func (c *Controller) SetDefaultSink(handler slog.Handler) {
+	c.SetSink(allHandlers, handler)
 }
 
-// SetLevel sets the log level for a particular named logger.  All handlers with this same
-// are affected, in the past or future.
+// SetLevel sets the log level for flume handlers with the given name, overriding
+// the default level.
 func (c *Controller) SetLevel(name string, l slog.Level) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -110,12 +132,16 @@ func (c *Controller) SetLevel(name string, l slog.Level) {
 	}
 }
 
-// SetDefaultLevel sets the default log level for all handlers which don't have a specific level
-// assigned to them
+// SetDefaultLevel sets the default log level for all flume handlers managed by this
+// controller.
 func (c *Controller) SetDefaultLevel(l slog.Level) {
 	c.SetLevel(allHandlers, l)
 }
 
+// Use applies middleware to the sink for flume handlers with the given name.
+//
+// This middleware will be applied *in addition to* the default middleware.
+// See [Controller.UseDefault]
 func (c *Controller) Use(name string, middleware ...Middleware) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -132,6 +158,19 @@ func (c *Controller) Use(name string, middleware ...Middleware) {
 	}
 }
 
+// UseDefault applies middleware to the sink for all flume handlers managed by this controller.
+//
+// Default middleware will be applied *in addition to* the middleware applied to individual
+// handlers with Use().
+//
+// During a call to Handle(), default middleware is invoked first, then this middleware.
+// The middleware will be invoked in the order it is passed to Use().  Example:
+//
+//	ctl.Use("http", Format(), Summarize())
+//	ctl.UseDefault(Redact(), Filter())
+//
+// In this example, each Handle() call would invoke Redact, then Filter, then Format, then Summarize,
+// then the sink.
 func (c *Controller) UseDefault(middleware ...Middleware) {
 	c.Use(allHandlers, middleware...)
 }

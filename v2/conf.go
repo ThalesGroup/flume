@@ -7,32 +7,32 @@ import (
 )
 
 type conf struct {
-	name                   string
-	lvl                    *slog.LevelVar
-	customLvl              bool
-	coreDelegate, delegate slog.Handler
-	customDelegate         bool
+	name           string
+	lvl            *slog.LevelVar
+	customLvl      bool
+	sink, delegate slog.Handler
+	customSink     bool
 	sync.Mutex
 	states           map[*state]struct{}
 	middleware       []Middleware
 	globalMiddleware []Middleware
 }
 
-func (c *conf) setCoreDelegate(delegate slog.Handler, isDefault bool) {
+func (c *conf) setSink(sink slog.Handler, isDefault bool) {
 	c.Lock()
 	defer c.Unlock()
 
-	if c.customDelegate && isDefault {
+	if c.customSink && isDefault {
 		return
 	}
 
-	c.customDelegate = !isDefault
+	c.customSink = !isDefault
 
-	if delegate == nil {
-		delegate = noop
+	if sink == nil {
+		sink = noop
 	}
 
-	c.coreDelegate = delegate
+	c.sink = sink
 
 	c.rebuildDelegate()
 }
@@ -41,7 +41,7 @@ func (c *conf) setCoreDelegate(delegate slog.Handler, isDefault bool) {
 // This function is not thread safe, and should only be called while holding the conf mutex.
 func (c *conf) rebuildDelegate() {
 	// apply middleware, first the local middleware, then global in reverse order
-	h := c.coreDelegate
+	h := c.sink
 	for i := len(c.middleware) - 1; i >= 0; i-- {
 		h = c.middleware[i].Apply(h)
 	}

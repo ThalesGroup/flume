@@ -15,10 +15,18 @@
   - [x] Factory -> ??? maybe "Controller"?
   - [x] handlerState -> state
   - [x] delegateHandler -> delegate
-- [ ] still not crazy about some of the names, in particular "conf" and "delegate".  How about "sink" for the delegate handler?
+- [x] still not crazy about some of the names, in particular "conf" and "delegate".  How about "sink" for the delegate handler?
 - [x] add convenience methods for creating a handler *and* creating a new logger from it.
 - [x] Add a convenience method for loading configuration from the environment, like in v1
 - [ ] Add a way to register additional handlers to "encoder" values in config, and maybe change the name "Encoder" to "Handler", "DefaultDelegate", "DefaultSink", etc
 - [ ] Add an option to Config for v1 compatibility
   - installs the DetailedErrors ReplaceAttr
   - And what else?
+- [ ] Review ConfigFromEnv().  Not sure if I should break that down more.
+- [ ] Docs
+- [ ] flumetest, and could this be replaced by 
+- [ ] LoggerWriter, could this be replaced by an off the shelf sink?
+- [ ] Make the "logger" key name configurable
+- [ ] What happens when using flume with no configuration, by default?  Should it act like slog, and forward to the legacy log package?
+- [ ] When using Config to set all the levels, does that clear any prior level settings?  Is there generally a way to clear/reset
+      all confs?

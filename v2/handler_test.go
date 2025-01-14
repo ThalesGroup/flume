@@ -73,9 +73,9 @@ func TestStateWeakRef(t *testing.T) {
 
 	// make sure changes to the root ancestor still cascade down to all ancestors,
 	// even if links in the tree have already been released.
-	assert.IsType(t, &slog.TextHandler{}, grandchild.Handler().(*handler).delegateHandler())
-	ctl.SetDefaultDelegate(slog.NewJSONHandler(os.Stdout, nil))
-	assert.IsType(t, &slog.JSONHandler{}, grandchild.Handler().(*handler).delegateHandler())
+	assert.IsType(t, &slog.TextHandler{}, grandchild.Handler().(*handler).delegate())
+	ctl.SetDefaultSink(slog.NewJSONHandler(os.Stdout, nil))
+	assert.IsType(t, &slog.JSONHandler{}, grandchild.Handler().(*handler).delegate())
 }
 
 // removeKeys returns a function suitable for HandlerOptions.ReplaceAttr
@@ -118,7 +118,7 @@ func TestHandlers(t *testing.T) {
 			wantJSON: `{"level":  "INFO", "logger": "h1", "msg":"hi"}`,
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(nil)
-				f.SetDefaultDelegate(slog.NewJSONHandler(buf, opts))
+				f.SetDefaultSink(slog.NewJSONHandler(buf, opts))
 
 				return f.Handler("h1")
 			},
@@ -129,7 +129,7 @@ func TestHandlers(t *testing.T) {
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
 				h := f.Handler("h1")
-				f.SetDefaultDelegate(slog.NewTextHandler(buf, opts))
+				f.SetDefaultSink(slog.NewTextHandler(buf, opts))
 
 				return h
 			},
@@ -139,7 +139,7 @@ func TestHandlers(t *testing.T) {
 			wantJSON: `{"level":  "INFO", "logger": "h1", "msg":"hi"}`,
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
-				f.SetDelegate("h2", slog.NewTextHandler(buf, opts))
+				f.SetSink("h2", slog.NewTextHandler(buf, opts))
 
 				return f.Handler("h1")
 			},
@@ -149,7 +149,7 @@ func TestHandlers(t *testing.T) {
 			wantText: "level=INFO msg=hi logger=h1\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
-				f.SetDelegate("h1", slog.NewTextHandler(buf, opts))
+				f.SetSink("h1", slog.NewTextHandler(buf, opts))
 
 				return f.Handler("h1")
 			},
@@ -160,7 +160,7 @@ func TestHandlers(t *testing.T) {
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
 				h := f.Handler("h1")
-				f.SetDelegate("h1", slog.NewTextHandler(buf, opts))
+				f.SetSink("h1", slog.NewTextHandler(buf, opts))
 
 				return h
 			},
@@ -172,7 +172,7 @@ func TestHandlers(t *testing.T) {
 				f := NewController(slog.NewJSONHandler(buf, opts))
 				h := f.Handler("h1")
 				c := h.WithAttrs([]slog.Attr{slog.String("color", "red")})
-				f.SetDelegate("h1", slog.NewTextHandler(buf, opts))
+				f.SetSink("h1", slog.NewTextHandler(buf, opts))
 
 				return c
 			},
@@ -182,7 +182,7 @@ func TestHandlers(t *testing.T) {
 			wantText: "level=INFO msg=hi logger=h1 color=red\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
-				f.SetDelegate("h1", slog.NewTextHandler(buf, opts))
+				f.SetSink("h1", slog.NewTextHandler(buf, opts))
 				h := f.Handler("h1")
 				c := h.WithAttrs([]slog.Attr{slog.String("color", "red")})
 
@@ -194,7 +194,7 @@ func TestHandlers(t *testing.T) {
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
 				h := f.Handler("h1")
-				f.SetDefaultDelegate(nil)
+				f.SetDefaultSink(nil)
 
 				return h
 			},
@@ -204,7 +204,7 @@ func TestHandlers(t *testing.T) {
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
 				h := f.Handler("h1")
-				f.SetDelegate("h1", nil)
+				f.SetSink("h1", nil)
 
 				return h
 			},
@@ -215,7 +215,7 @@ func TestHandlers(t *testing.T) {
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
 				h := f.Handler("h1")
-				f.SetDelegate("h2", nil)
+				f.SetSink("h2", nil)
 
 				return h
 			},
@@ -224,7 +224,7 @@ func TestHandlers(t *testing.T) {
 			name:     "default",
 			wantJSON: `{"level":  "INFO", "logger": "def1", "msg":"hi"}`,
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
-				SetDefaultDelegate(slog.NewJSONHandler(buf, opts))
+				SetDefaultSink(slog.NewJSONHandler(buf, opts))
 				return NewHandler("def1")
 			},
 		},
@@ -232,7 +232,7 @@ func TestHandlers(t *testing.T) {
 			name:     "default with text",
 			wantText: "level=INFO msg=hi logger=def1\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
-				SetDefaultDelegate(slog.NewTextHandler(buf, opts))
+				SetDefaultSink(slog.NewTextHandler(buf, opts))
 				return NewHandler("def1")
 			},
 		},
@@ -240,8 +240,8 @@ func TestHandlers(t *testing.T) {
 			name:     "default with specific logger",
 			wantText: "level=INFO msg=hi logger=def2\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
-				SetDefaultDelegate(slog.NewJSONHandler(buf, opts))
-				SetDelegate("def2", slog.NewTextHandler(buf, opts))
+				SetDefaultSink(slog.NewJSONHandler(buf, opts))
+				SetSink("def2", slog.NewTextHandler(buf, opts))
 
 				return NewHandler("def2")
 			},
@@ -251,7 +251,7 @@ func TestHandlers(t *testing.T) {
 			level: slog.LevelDebug,
 			// wantText: "level=INFO msg=hi logger=def1\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
-				SetDefaultDelegate(slog.NewTextHandler(buf, opts))
+				SetDefaultSink(slog.NewTextHandler(buf, opts))
 				return NewHandler("def1")
 			},
 		},
@@ -260,7 +260,7 @@ func TestHandlers(t *testing.T) {
 			level:    slog.LevelDebug,
 			wantText: "level=DEBUG msg=hi logger=def1\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
-				SetDefaultDelegate(slog.NewTextHandler(buf, opts))
+				SetDefaultSink(slog.NewTextHandler(buf, opts))
 				SetDefaultLevel(slog.LevelDebug)
 
 				return NewHandler("def1")
@@ -271,7 +271,7 @@ func TestHandlers(t *testing.T) {
 			level:    slog.LevelDebug,
 			wantText: "level=DEBUG msg=hi logger=TestHandlers/set_specific_log_level\n",
 			handlerFn: func(t *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
-				SetDefaultDelegate(slog.NewTextHandler(buf, opts))
+				SetDefaultSink(slog.NewTextHandler(buf, opts))
 				SetDefaultLevel(slog.LevelInfo)
 				SetLevel(t.Name(), slog.LevelDebug)
 

@@ -293,7 +293,7 @@ func (c Config) Configure(ctl *Controller) error {
 		ctl.SetLevel(name, level)
 	}
 
-	ctl.SetDefaultDelegate(c.Handler())
+	ctl.SetDefaultSink(c.Handler())
 
 	return nil
 }
