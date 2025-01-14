@@ -24,9 +24,15 @@
   - And what else?
 - [ ] Review ConfigFromEnv().  Not sure if I should break that down more.
 - [ ] Docs
-- [ ] flumetest, and could this be replaced by 
+- [ ] flumetest, and could this be replaced by https://github.com/neilotoole/slogt/blob/master/slogt.go
 - [ ] LoggerWriter, could this be replaced by an off the shelf sink?
 - [ ] Make the "logger" key name configurable
 - [ ] What happens when using flume with no configuration, by default?  Should it act like slog, and forward to the legacy log package?
+      - for now, it forwards to the slog default handler, which in turn forwards to the legacy log package.  I considered adding
+        a function which reverses that flow, by setting slog.SetDefault() to a flume handler...but that gets really wierd.  slog's
+        package level functions, like With(), don't make much sense, since setting the slog default handler *after* calling
+        slog.With(), means that child logger will be stuck with the older handler...it generally poses the same order-of-init problems
+        which flume is trying to solve in general.  So, for now, I'm leaving out this type of function.  I will document that users
+        *can* do this if they wish, by first setting a new default sink, then setting slog's default handler, but that there are caveats.
 - [ ] When using Config to set all the levels, does that clear any prior level settings?  Is there generally a way to clear/reset
       all confs?
