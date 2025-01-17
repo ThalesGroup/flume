@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ansel1/console-slog"
 	"github.com/ansel1/merry/v2"
-	"github.com/phsym/console-slog"
 )
 
 // DefaultConfigEnvVars is a list of the environment variables

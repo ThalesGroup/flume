@@ -13,6 +13,7 @@ require (
 )
 
 require (
+	github.com/ansel1/console-slog v0.4.1 // indirect
 	github.com/ansel1/merry v1.8.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
@@ -27,5 +28,3 @@ require (
 	google.golang.org/protobuf v1.33.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/phsym/console-slog => github.com/ansel1/console-slog v0.4.0
