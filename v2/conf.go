@@ -7,9 +7,11 @@ import (
 )
 
 type conf struct {
-	name           string
-	lvl            *slog.LevelVar
-	customLvl      bool
+	name      string
+	lvl       *slog.LevelVar
+	customLvl bool
+	// sink is the ultimate, final handler
+	// delegate is the sink wrapped with middleware
 	sink, delegate slog.Handler
 	customSink     bool
 	sync.Mutex

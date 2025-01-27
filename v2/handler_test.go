@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"runtime"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -108,14 +109,14 @@ func TestHandlers(t *testing.T) {
 		},
 		{
 			name:     "factory constructor",
-			wantJSON: `{"level":  "INFO", "logger": "h1", "msg":"hi"}`,
+			wantJSON: `{"level":  "INFO", LoggerKey: "h1", "msg":"hi"}`,
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				return NewController(slog.NewJSONHandler(buf, opts)).Handler("h1")
 			},
 		},
 		{
 			name:     "change default before construction",
-			wantJSON: `{"level":  "INFO", "logger": "h1", "msg":"hi"}`,
+			wantJSON: `{"level":  "INFO", LoggerKey: "h1", "msg":"hi"}`,
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(nil)
 				f.SetDefaultSink(slog.NewJSONHandler(buf, opts))
@@ -136,7 +137,7 @@ func TestHandlers(t *testing.T) {
 		},
 		{
 			name:     "change other handler before construction",
-			wantJSON: `{"level":  "INFO", "logger": "h1", "msg":"hi"}`,
+			wantJSON: `{"level":  "INFO", LoggerKey: "h1", "msg":"hi"}`,
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
 				f.SetSink("h2", slog.NewTextHandler(buf, opts))
@@ -211,7 +212,7 @@ func TestHandlers(t *testing.T) {
 		},
 		{
 			name:     "set other logger to nil",
-			wantJSON: `{"level":  "INFO", "logger": "h1", "msg":"hi"}`,
+			wantJSON: `{"level":  "INFO", LoggerKey: "h1", "msg":"hi"}`,
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
 				h := f.Handler("h1")
@@ -222,7 +223,7 @@ func TestHandlers(t *testing.T) {
 		},
 		{
 			name:     "default",
-			wantJSON: `{"level":  "INFO", "logger": "def1", "msg":"hi"}`,
+			wantJSON: `{"level":  "INFO", LoggerKey: "def1", "msg":"hi"}`,
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				Default().SetDefaultSink(slog.NewJSONHandler(buf, opts))
 				return Handler("def1")
@@ -307,7 +308,7 @@ func TestLevels(t *testing.T) {
 	}{
 		{
 			name:     "default info",
-			wantJSON: `{"level":  "INFO", "logger": "h1", "msg":"hi"}`,
+			wantJSON: `{"level":  "INFO", LoggerKey: "h1", "msg":"hi"}`,
 			handlerFunc: func(_ *testing.T, f *Controller) slog.Handler {
 				return f.Handler("h1")
 			},
@@ -338,7 +339,7 @@ func TestLevels(t *testing.T) {
 		{
 			name:     "set handler specific after construction",
 			level:    slog.LevelDebug,
-			wantJSON: `{"level":  "DEBUG", "logger": "h1", "msg":"hi"}`,
+			wantJSON: `{"level":  "DEBUG", LoggerKey: "h1", "msg":"hi"}`,
 			handlerFunc: func(_ *testing.T, f *Controller) slog.Handler {
 				h := f.Handler("h1")
 				f.SetLevel("h1", slog.LevelDebug)
@@ -349,7 +350,7 @@ func TestLevels(t *testing.T) {
 		{
 			name:     "set handler specific before construction",
 			level:    slog.LevelDebug,
-			wantJSON: `{"level":  "DEBUG", "logger": "h1", "msg":"hi"}`,
+			wantJSON: `{"level":  "DEBUG", LoggerKey: "h1", "msg":"hi"}`,
 			handlerFunc: func(_ *testing.T, f *Controller) slog.Handler {
 				f.SetLevel("h1", slog.LevelDebug)
 				return f.Handler("h1")
@@ -376,7 +377,7 @@ func TestLevels(t *testing.T) {
 		{
 			name:     "cascade to children",
 			level:    slog.LevelDebug,
-			wantJSON: `{"level":  "DEBUG", "logger": "h1", "msg":"hi", "color":"red"}`,
+			wantJSON: `{"level":  "DEBUG", LoggerKey: "h1", "msg":"hi", "color":"red"}`,
 			handlerFunc: func(_ *testing.T, f *Controller) slog.Handler {
 				f.SetLevel("h1", slog.LevelDebug)
 				h := f.Handler("h1")
@@ -388,7 +389,7 @@ func TestLevels(t *testing.T) {
 		{
 			name:     "update after creating child",
 			level:    slog.LevelDebug,
-			wantJSON: `{"level":  "DEBUG", "logger": "h1", "msg":"hi", "color":"red"}`,
+			wantJSON: `{"level":  "DEBUG", LoggerKey: "h1", "msg":"hi", "color":"red"}`,
 			handlerFunc: func(_ *testing.T, f *Controller) slog.Handler {
 				h := f.Handler("h1")
 				c := h.WithAttrs([]slog.Attr{slog.String("color", "red")})

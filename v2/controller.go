@@ -6,8 +6,10 @@ import (
 )
 
 const (
-	loggerNameKey = "logger"
-	allHandlers   = "*"
+	// LoggerKey is the key which stores the name of the logger.  The name was the argument
+	// passed to Controller.NewLogger() or Controller.NewHandler()
+	LoggerKey   = "logger"
+	allHandlers = "*"
 )
 
 // Controller is the core of flume.  It creates and controls a set of flume slog.Handlers.
@@ -57,7 +59,7 @@ func (c *Controller) Handler(name string) slog.Handler {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	return c.conf(name).newHandler([]slog.Attr{slog.String(loggerNameKey, name)}, nil)
+	return c.conf(name).newHandler([]slog.Attr{slog.String(LoggerKey, name)}, nil)
 }
 
 // conf locates or creates a new conf for the given name.  The Controller

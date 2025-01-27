@@ -263,19 +263,19 @@ func (c Config) Handler() slog.Handler {
 	case "term":
 		handler = console.NewHandler(out, &console.HandlerOptions{
 			AddSource:   c.AddSource,
-			Theme:       console.NewDimTheme(),
+			Theme:       console.NewDefaultTheme(),
 			ReplaceAttr: ChainReplaceAttrs(c.ReplaceAttrs...),
 			TimeFormat:  "15:04:05.000",
-			Headers:     []string{"logger"},
-			NoColor:     true,
+			Headers:     []string{LoggerKey},
+			HeaderWidth: 13,
 		})
 	case "term-color":
 		handler = console.NewHandler(out, &console.HandlerOptions{
 			AddSource:   c.AddSource,
-			Theme:       console.NewDimTheme(),
+			Theme:       console.NewDefaultTheme(),
 			ReplaceAttr: ChainReplaceAttrs(c.ReplaceAttrs...),
 			TimeFormat:  "15:04:05.000",
-			Headers:     []string{"logger"},
+			Headers:     []string{LoggerKey},
 		})
 	case "json":
 		fallthrough

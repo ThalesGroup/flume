@@ -39,7 +39,7 @@ func TestDevDefaults(t *testing.T) {
 
 	tm := time.Date(2011, time.April, 29, 3, 30, 0, 0, time.UTC)
 	rec := slog.NewRecord(tm, slog.LevelInfo, "foobar", pc)
-	rec.Add("logger", "flume", "size", 5)
+	rec.Add(LoggerKey, "flume", "size", 5)
 	err := h.Handle(context.Background(), rec)
 	require.NoError(t, err)
 
@@ -246,7 +246,7 @@ func TestConfig_Configure(t *testing.T) {
 				buf.Reset()
 				l2 := c.Logger("blue")
 				l2.Info("cya")
-				mapstest.AssertContains(t, json.RawMessage(buf.Bytes()), map[string]any{"msg": "cya", "logger": "blue"}, "blue logger should log info level, was %v", buf.String())
+				mapstest.AssertContains(t, json.RawMessage(buf.Bytes()), map[string]any{"msg": "cya", LoggerKey: "blue"}, "blue logger should log info level, was %v", buf.String())
 			},
 		},
 	}
