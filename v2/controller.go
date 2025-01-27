@@ -59,7 +59,7 @@ func (c *Controller) Handler(name string) slog.Handler {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	return c.conf(name).newHandler([]slog.Attr{slog.String(LoggerKey, name)}, nil)
+	return c.conf(name).handler()
 }
 
 // conf locates or creates a new conf for the given name.  The Controller
@@ -75,7 +75,6 @@ func (c *Controller) conf(name string) *conf {
 		cfg = &conf{
 			name:             name,
 			lvl:              levelVar,
-			states:           map[*state]struct{}{},
 			globalMiddleware: c.defaultMiddleware,
 		}
 		cfg.setSink(c.defaultSink, true)

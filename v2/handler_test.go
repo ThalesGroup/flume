@@ -4,80 +4,11 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
-	"os"
 	"runtime"
-	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
-
-func TestStateWeakRef(t *testing.T) {
-	// This ensures that child handlers are garbage collected.  slog methods like WithGroup() create
-	// copies of their handlers, and flume's handlers keep references to those child handlers, so that
-	// changes from the Factory can propagate down through all the handler clones.
-	//
-	// But when the child loggers are garbage collected, the handlers inside them should be collected
-	// to.  The reference from the parent handler to the child handler shouldn't prevent the child handler
-	// from being collected, so it needs to be something like a weakref in java.  Golang doesn't have weakref
-	// yet, but we use some fancy finalizers to mimic them.
-	//
-	// Test: create a logger/handler.  Pass it to another function, which creates a child logger/handler, uses
-	// it, then discards it.
-	//
-	// After this function returns, the child logger should be garbage collected, and the parent *handler* should
-	// no longer be holding a ref to the child handler.
-
-	ctl := NewController(slog.NewTextHandler(os.Stdout, nil))
-	h := ctl.Handler("")
-
-	conf := ctl.conf("")
-	lenStates := func() int {
-		// need to lock before checking size of children or race detector complains
-		conf.Lock()
-		defer conf.Unlock()
-
-		return len(conf.states)
-	}
-
-	logger := slog.New(h)
-
-	logger.Info("Hi")
-
-	// useChildLogger creates a child logger, uses it, then throws it away
-	useChildLogger := func(t *testing.T, logger *slog.Logger) *slog.Logger {
-		child := logger.WithGroup("colors").With("blue", true)
-		child.Info("There", "flavor", "vanilla")
-
-		assert.Equal(t, 3, lenStates())
-
-		grandchild := child.With("size", "big")
-
-		assert.Equal(t, 4, lenStates())
-
-		return grandchild
-	}
-
-	grandchild := useChildLogger(t, logger)
-
-	// Need to run 2 gc cycles.  The first one should collect the handler and run the finalizer, then the second
-	// should collect the state orphaned by the finalizer.
-	runtime.GC()
-	runtime.GC()
-
-	// after gc, there should be two states left, the original referenced by `h`, and the grandchild.
-	assert.Equal(t, 2, lenStates())
-
-	// to make this test reliable, we need to ensure that the compiler doesn't allow h to be gc'd before we've
-	// asserted the length of states.
-	runtime.KeepAlive(h)
-
-	// make sure changes to the root ancestor still cascade down to all ancestors,
-	// even if links in the tree have already been released.
-	assert.IsType(t, &slog.TextHandler{}, grandchild.Handler().(*handler).delegate())
-	ctl.SetDefaultSink(slog.NewJSONHandler(os.Stdout, nil))
-	assert.IsType(t, &slog.JSONHandler{}, grandchild.Handler().(*handler).delegate())
-}
 
 // removeKeys returns a function suitable for HandlerOptions.ReplaceAttr
 // that removes all Attrs with the given keys.
@@ -109,14 +40,14 @@ func TestHandlers(t *testing.T) {
 		},
 		{
 			name:     "factory constructor",
-			wantJSON: `{"level":  "INFO", LoggerKey: "h1", "msg":"hi"}`,
+			wantJSON: `{"level": "INFO", "logger": "h1", "msg":"hi"}`,
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				return NewController(slog.NewJSONHandler(buf, opts)).Handler("h1")
 			},
 		},
 		{
-			name:     "change default before construction",
-			wantJSON: `{"level":  "INFO", LoggerKey: "h1", "msg":"hi"}`,
+			name:     "change default sink before handler",
+			wantJSON: `{"level": "INFO", "logger": "h1", "msg":"hi"}`,
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(nil)
 				f.SetDefaultSink(slog.NewJSONHandler(buf, opts))
@@ -125,7 +56,7 @@ func TestHandlers(t *testing.T) {
 			},
 		},
 		{
-			name:     "change default after construction",
+			name:     "change default sink after handler",
 			wantText: "level=INFO msg=hi logger=h1\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
@@ -136,8 +67,8 @@ func TestHandlers(t *testing.T) {
 			},
 		},
 		{
-			name:     "change other handler before construction",
-			wantJSON: `{"level":  "INFO", LoggerKey: "h1", "msg":"hi"}`,
+			name:     "change other sink before handler",
+			wantJSON: `{"level":  "INFO", "logger": "h1", "msg":"hi"}`,
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
 				f.SetSink("h2", slog.NewTextHandler(buf, opts))
@@ -146,7 +77,7 @@ func TestHandlers(t *testing.T) {
 			},
 		},
 		{
-			name:     "change specific before construction",
+			name:     "change sink before handler",
 			wantText: "level=INFO msg=hi logger=h1\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
@@ -156,7 +87,7 @@ func TestHandlers(t *testing.T) {
 			},
 		},
 		{
-			name:     "change specific after construction",
+			name:     "change sink after handler",
 			wantText: "level=INFO msg=hi logger=h1\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
@@ -167,27 +98,40 @@ func TestHandlers(t *testing.T) {
 			},
 		},
 		{
-			name:     "cascade to children after construction",
-			wantText: "level=INFO msg=hi logger=h1 color=red\n",
+			name:     "WithXXX",
+			wantText: "level=INFO msg=hi logger=h1 props.color=red\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
-				f := NewController(slog.NewJSONHandler(buf, opts))
+				f := NewController(slog.NewTextHandler(buf, opts))
 				h := f.Handler("h1")
-				c := h.WithAttrs([]slog.Attr{slog.String("color", "red")})
-				f.SetSink("h1", slog.NewTextHandler(buf, opts))
-
-				return c
+				h = h.WithGroup("props")
+				h = h.WithAttrs([]slog.Attr{slog.String("color", "red")})
+				return h
 			},
 		},
 		{
-			name:     "cascade to children before construction",
-			wantText: "level=INFO msg=hi logger=h1 color=red\n",
+			name:     "change sink after WithXXX",
+			wantText: "level=INFO msg=hi logger=h1 size=big props.color=red props.address.street=mockingbird\n",
+			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
+				f := NewController(slog.NewJSONHandler(buf, opts))
+				h := f.Handler("h1")
+				h = h.WithAttrs([]slog.Attr{slog.String("size", "big")})
+				h = h.WithGroup("props").WithAttrs([]slog.Attr{slog.String("color", "red")}).WithGroup("address").WithAttrs([]slog.Attr{slog.String("street", "mockingbird")})
+				f.SetSink("h1", slog.NewTextHandler(buf, opts))
+
+				return h
+			},
+		},
+		{
+			name:     "change sink before WithXXX",
+			wantText: "level=INFO msg=hi logger=h1 size=big props.color=red props.address.street=mockingbird\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
 				f.SetSink("h1", slog.NewTextHandler(buf, opts))
 				h := f.Handler("h1")
-				c := h.WithAttrs([]slog.Attr{slog.String("color", "red")})
+				h = h.WithAttrs([]slog.Attr{slog.String("size", "big")})
+				h = h.WithGroup("props").WithAttrs([]slog.Attr{slog.String("color", "red")}).WithGroup("address").WithAttrs([]slog.Attr{slog.String("street", "mockingbird")})
 
-				return c
+				return h
 			},
 		},
 		{
@@ -212,7 +156,7 @@ func TestHandlers(t *testing.T) {
 		},
 		{
 			name:     "set other logger to nil",
-			wantJSON: `{"level":  "INFO", LoggerKey: "h1", "msg":"hi"}`,
+			wantJSON: `{"level":  "INFO", "logger": "h1", "msg":"hi"}`,
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
 				h := f.Handler("h1")
@@ -223,7 +167,7 @@ func TestHandlers(t *testing.T) {
 		},
 		{
 			name:     "default",
-			wantJSON: `{"level":  "INFO", LoggerKey: "def1", "msg":"hi"}`,
+			wantJSON: `{"level":  "INFO", "logger": "def1", "msg":"hi"}`,
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				Default().SetDefaultSink(slog.NewJSONHandler(buf, opts))
 				return Handler("def1")
@@ -279,6 +223,21 @@ func TestHandlers(t *testing.T) {
 				return Handler(t.Name())
 			},
 		},
+		{
+			name:     "ensure cloned slices",
+			wantText: "level=INFO msg=hi logger=h1 props.flavor=lemon props.color=red\n",
+			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
+				ctl := NewController(slog.NewTextHandler(buf, opts))
+				h1 := ctl.Handler("h1").WithGroup("props").WithAttrs([]slog.Attr{slog.String("flavor", "lemon")})
+				h2 := h1.WithAttrs([]slog.Attr{slog.String("color", "red")}) // this appended a group to an internal slice
+				h3 := h1.WithAttrs([]slog.Attr{slog.String("size", "big")})  // so did this
+				runtime.KeepAlive(h3)
+				// need to make sure that h2 and h3 have completely independent states, and one group didn't over the other's group
+				// to test this, I need to install a ReplaceAttr function, since that's all the group slice is
+				// used for
+				return h2
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -308,7 +267,7 @@ func TestLevels(t *testing.T) {
 	}{
 		{
 			name:     "default info",
-			wantJSON: `{"level":  "INFO", LoggerKey: "h1", "msg":"hi"}`,
+			wantJSON: `{"level":  "INFO", "logger": "h1", "msg":"hi"}`,
 			handlerFunc: func(_ *testing.T, f *Controller) slog.Handler {
 				return f.Handler("h1")
 			},
@@ -339,7 +298,7 @@ func TestLevels(t *testing.T) {
 		{
 			name:     "set handler specific after construction",
 			level:    slog.LevelDebug,
-			wantJSON: `{"level":  "DEBUG", LoggerKey: "h1", "msg":"hi"}`,
+			wantJSON: `{"level":  "DEBUG", "logger": "h1", "msg":"hi"}`,
 			handlerFunc: func(_ *testing.T, f *Controller) slog.Handler {
 				h := f.Handler("h1")
 				f.SetLevel("h1", slog.LevelDebug)
@@ -350,7 +309,7 @@ func TestLevels(t *testing.T) {
 		{
 			name:     "set handler specific before construction",
 			level:    slog.LevelDebug,
-			wantJSON: `{"level":  "DEBUG", LoggerKey: "h1", "msg":"hi"}`,
+			wantJSON: `{"level":  "DEBUG", "logger": "h1", "msg":"hi"}`,
 			handlerFunc: func(_ *testing.T, f *Controller) slog.Handler {
 				f.SetLevel("h1", slog.LevelDebug)
 				return f.Handler("h1")
@@ -377,7 +336,7 @@ func TestLevels(t *testing.T) {
 		{
 			name:     "cascade to children",
 			level:    slog.LevelDebug,
-			wantJSON: `{"level":  "DEBUG", LoggerKey: "h1", "msg":"hi", "color":"red"}`,
+			wantJSON: `{"level":  "DEBUG", "logger": "h1", "msg":"hi", "color":"red"}`,
 			handlerFunc: func(_ *testing.T, f *Controller) slog.Handler {
 				f.SetLevel("h1", slog.LevelDebug)
 				h := f.Handler("h1")
@@ -389,7 +348,7 @@ func TestLevels(t *testing.T) {
 		{
 			name:     "update after creating child",
 			level:    slog.LevelDebug,
-			wantJSON: `{"level":  "DEBUG", LoggerKey: "h1", "msg":"hi", "color":"red"}`,
+			wantJSON: `{"level":  "DEBUG", "logger": "h1", "msg":"hi", "color":"red"}`,
 			handlerFunc: func(_ *testing.T, f *Controller) slog.Handler {
 				h := f.Handler("h1")
 				c := h.WithAttrs([]slog.Attr{slog.String("color", "red")})

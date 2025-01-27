@@ -130,7 +130,7 @@ func TestDetailedErrors(t *testing.T) {
 
 	marshaledErr, merr := json.Marshal(fmt.Sprintf("%+v", err))
 	require.NoError(t, merr)
-	assert.JSONEq(t, fmt.Sprintf(`{"level":"INFO",LoggerKey:"main","msg":"an error","error":%v}`, string(marshaledErr)), buf.String())
+	assert.JSONEq(t, fmt.Sprintf(`{"level":"INFO","logger":"main","msg":"an error","error":%v}`, string(marshaledErr)), buf.String())
 
 	// mapstest.AssertEquivalent(t, map[string]any{"level": "INFO", LoggerKey: "main", "msg": "an error", "error": merry.Details(err)}, json.RawMessage(buf.String()))
 }

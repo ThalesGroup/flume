@@ -2,28 +2,22 @@ package flume
 
 import (
 	"log/slog"
-	"runtime"
-	"sync"
+	"sync/atomic"
 )
 
 type conf struct {
-	name      string
-	lvl       *slog.LevelVar
-	customLvl bool
+	name                  string
+	lvl                   *slog.LevelVar
+	customLvl, customSink bool
 	// sink is the ultimate, final handler
 	// delegate is the sink wrapped with middleware
-	sink, delegate slog.Handler
-	customSink     bool
-	sync.Mutex
-	states           map[*state]struct{}
+	sink             slog.Handler
+	delegatePtr      atomic.Pointer[slog.Handler]
 	middleware       []Middleware
 	globalMiddleware []Middleware
 }
 
 func (c *conf) setSink(sink slog.Handler, isDefault bool) {
-	c.Lock()
-	defer c.Unlock()
-
 	if c.customSink && isDefault {
 		return
 	}
@@ -51,11 +45,9 @@ func (c *conf) rebuildDelegate() {
 		h = c.globalMiddleware[i].Apply(h)
 	}
 
-	c.delegate = h
+	h = h.WithAttrs([]slog.Attr{slog.String(LoggerKey, c.name)})
 
-	for s := range c.states {
-		s.setDelegate(c.delegate)
-	}
+	c.delegatePtr.Store(&h)
 }
 
 func (c *conf) setLevel(l slog.Level, isDefault bool) {
@@ -72,50 +64,20 @@ func (c *conf) setLevel(l slog.Level, isDefault bool) {
 }
 
 func (c *conf) use(middleware ...Middleware) {
-	c.Lock()
-	defer c.Unlock()
-
 	c.middleware = append(c.middleware, middleware...)
 
 	c.rebuildDelegate()
 }
 
 func (c *conf) setGlobalMiddleware(middleware []Middleware) {
-	c.Lock()
-	defer c.Unlock()
-
 	c.globalMiddleware = middleware
 
 	c.rebuildDelegate()
 }
 
-func (c *conf) newHandler(attrs []slog.Attr, groups []string) *handler {
-	c.Lock()
-	defer c.Unlock()
-
-	s := &state{
-		attrs:  attrs,
-		groups: groups,
-		level:  c.lvl,
-		conf:   c,
+func (c *conf) handler() slog.Handler {
+	return &handler{
+		basePtr: &c.delegatePtr,
+		level:   c.lvl,
 	}
-	s.setDelegate(c.delegate)
-
-	c.states[s] = struct{}{}
-
-	h := &handler{
-		state: s,
-	}
-
-	// when the handler goes out of scope, run a finalizer which
-	// removes the state reference from its parent state, allowing
-	// it to be gc'd
-	runtime.SetFinalizer(h, func(_ *handler) {
-		c.Lock()
-		defer c.Unlock()
-
-		delete(c.states, s)
-	})
-
-	return h
 }

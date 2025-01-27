@@ -8,84 +8,74 @@ import (
 )
 
 type handler struct {
-	*state
-}
+	// atomic pointer to the base delegate
+	basePtr *atomic.Pointer[slog.Handler]
 
-type state struct {
-	// attrs associated with this handler.  immutable
-	attrs []slog.Attr
-	// group associated with this handler.  immutable
-	groups []string
+	// atomic pointer to a memoized copy of the base
+	// delegate, plus any transformations (i.e. WithGroup or WithAttrs calls)
+	memoPrt atomic.Pointer[[2]*slog.Handler]
 
-	// atomic pointer to handler delegate
-	delegatePtr atomic.Pointer[slog.Handler]
+	// list of WithGroup/WithAttrs transformations.  Can be re-applied
+	// to the base delegate any time it changes
+	transformers []func(slog.Handler) slog.Handler
 
 	// should be reference to the levelVar in the parent conf
 	level *slog.LevelVar
-
-	conf *conf
 }
 
-func (s *state) setDelegate(delegate slog.Handler) {
-	// re-apply groups and attrs settings
-	// don't need to check if s.attrs is empty: it will never be empty because
-	// all flume handlers have at least a "logger_name" attribute
-	// TODO: I think this logic is wrong.  this assumes
-	// that all these attrs are either nested in *no* groups, or
-	// nested in *all* the groups.  Really, each attr will only
-	// be nested in whatever set of groups was active when that
-	// attr was first added.
-	// TODO: Need to go back to each state holding pointers to
-	// children, and trickling delegate or conf changes down
-	// to to children.  And children need to point to parents...
-	// need to ensure that *only leaf states* are eligible for
-	// garbage collection, and not states which still have
-	// referenced children.
-	// Also, I think each state only needs to hold the set of
-	// attrs which were used to create that state using WithAttrs.
-	// It doesn't need the list of all attrs cached by parent
-	// states.  So long as those parents already embedded those attrs
-	// in their respective delegate handlers, and those delegate
-	// handlers have already been trickled down to this state,
-	// this state doesn't care about those parent attrs.  The state
-	// only needs to hold on to its own attrs in case a new delegate
-	// trickles down, and the state needs to rebuild its own delegate
-	delegate = delegate.WithAttrs(slices.Clone(s.attrs))
-	for _, g := range s.groups {
-		delegate = delegate.WithGroup(g)
+func (s *handler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	transformer := func(h slog.Handler) slog.Handler {
+		return h.WithAttrs(attrs)
+	}
+	return &handler{
+		basePtr:      s.basePtr,
+		level:        s.level,
+		transformers: slices.Clip(append(s.transformers, transformer)),
+	}
+}
+
+func (s *handler) WithGroup(name string) slog.Handler {
+	transformer := func(h slog.Handler) slog.Handler {
+		return h.WithGroup(name)
 	}
 
-	s.delegatePtr.Store(&delegate)
+	return &handler{
+		basePtr:      s.basePtr,
+		level:        s.level,
+		transformers: slices.Clip(append(s.transformers, transformer)),
+	}
 }
 
-func (s *state) delegate() slog.Handler {
-	handlerRef := s.delegatePtr.Load()
-	return *handlerRef
-}
-
-func (s *state) WithAttrs(attrs []slog.Attr) slog.Handler {
-	// TODO: I think I need to clone or clip this slice
-	// TODO: this is actually pretty inefficient.  Each time this is
-	// called, we end up re-calling WithAttrs and WithGroup on the delegate
-	// several times.
-	// TODO: consider adding native support for ReplaceAttr, and calling it
-	// here...that way I can implement ReplaceAttrs in flume, and it
-	// doesn't matter if the sinks implement it.  I'd need to add calls
-	// to it in Handle() as well.
-	return s.conf.newHandler(append(s.attrs, attrs...), s.groups)
-}
-
-func (s *state) WithGroup(name string) slog.Handler {
-	// TODO: I think I need to clone or clip this slice
-	return s.conf.newHandler(s.attrs, append(s.groups, name))
-}
-
-func (s *state) Enabled(_ context.Context, level slog.Level) bool {
+func (s *handler) Enabled(_ context.Context, level slog.Level) bool {
 	return level >= s.level.Level()
 }
 
-func (s *state) Handle(ctx context.Context, record slog.Record) error {
+func (s *handler) Handle(ctx context.Context, record slog.Record) error {
 	return s.delegate().Handle(ctx, record)
+}
+
+func (s *handler) delegate() slog.Handler {
+	base := s.basePtr.Load()
+	if base == nil {
+		return noop
+	}
+	memo := s.memoPrt.Load()
+	if memo != nil && memo[0] == base {
+		hPtr := memo[1]
+		if hPtr != nil {
+			return *hPtr
+		}
+	}
+	// build and memoize
+	delegate := *base
+	for _, transformer := range s.transformers {
+		delegate = transformer(delegate)
+	}
+	if delegate == nil {
+		delegate = noop
+	}
+	s.memoPrt.Store(&[2]*slog.Handler{base, &delegate})
+	return delegate
 }
 
 var noop = noopHandler{}

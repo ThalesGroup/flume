@@ -87,6 +87,7 @@ type Config struct {
 const (
 	EncodingJSON      = "json"
 	EncodingText      = "text"
+	EncodingTerm      = "term"
 	EncodingTermColor = "term-color"
 )
 
@@ -260,8 +261,9 @@ func (c Config) Handler() slog.Handler {
 	switch c.Encoding {
 	case "text", "console":
 		handler = slog.NewTextHandler(out, &opts)
-	case "term":
+	case EncodingTerm:
 		handler = console.NewHandler(out, &console.HandlerOptions{
+			NoColor:     true,
 			AddSource:   c.AddSource,
 			Theme:       console.NewDefaultTheme(),
 			ReplaceAttr: ChainReplaceAttrs(c.ReplaceAttrs...),
@@ -269,7 +271,7 @@ func (c Config) Handler() slog.Handler {
 			Headers:     []string{LoggerKey},
 			HeaderWidth: 13,
 		})
-	case "term-color":
+	case EncodingTermColor:
 		handler = console.NewHandler(out, &console.HandlerOptions{
 			AddSource:   c.AddSource,
 			Theme:       console.NewDefaultTheme(),
