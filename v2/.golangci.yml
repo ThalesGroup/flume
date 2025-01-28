@@ -8,9 +8,6 @@ linters-settings:
     disable:
       - shadow
 
-  paralleltest:
-    ignore-missing: true
-
   wrapcheck:
     # ignoreInterfaceRegexps:
     #   - 
@@ -54,6 +51,7 @@ linters:
     - mnd
     - godox
     - recvcheck          # good idea, but can't get it to ignore UnmarshalXXX functions
+    - paralleltest       # noisy, and false "Range statement for test TestXXX does not reinitialise the variable..." errors in non-parallel tests
 issues:
   # List of regexps of issue texts to exclude, empty list by default.
   # But independently from this option we use default exclude patterns,

@@ -9,10 +9,66 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/ansel1/console-slog"
 	"github.com/ansel1/merry/v2"
 )
+
+type SinkConstructor func(Config) (slog.Handler, error)
+
+var sinkConstructors sync.Map
+
+const (
+	TextSink      = "text"
+	JSONSink      = "json"
+	ConsoleSink   = "console"
+	TermSink      = "term"
+	TermColorSink = "term-color"
+)
+
+func init() {
+	RegisterSinkConstructor(TextSink, textSinkConstructor)
+	// for v1 compatibility, "console" is an alias for "text"
+	RegisterSinkConstructor(ConsoleSink, textSinkConstructor)
+	RegisterSinkConstructor(JSONSink, jsonSinkConstructor)
+	RegisterSinkConstructor(TermSink, termSinkConstructor(false))
+	RegisterSinkConstructor(TermColorSink, termSinkConstructor(true))
+}
+
+func RegisterSinkConstructor(name string, constructor SinkConstructor) {
+	sinkConstructors.Store(name, constructor)
+}
+
+func textSinkConstructor(c Config) (slog.Handler, error) {
+	opts := slog.HandlerOptions{
+		AddSource:   c.AddSource,
+		ReplaceAttr: ChainReplaceAttrs(c.ReplaceAttrs...),
+	}
+	return slog.NewTextHandler(c.Out, &opts), nil
+}
+
+func jsonSinkConstructor(c Config) (slog.Handler, error) {
+	opts := slog.HandlerOptions{
+		AddSource:   c.AddSource,
+		ReplaceAttr: ChainReplaceAttrs(c.ReplaceAttrs...),
+	}
+	return slog.NewJSONHandler(c.Out, &opts), nil
+}
+
+func termSinkConstructor(color bool) SinkConstructor {
+	return func(c Config) (slog.Handler, error) {
+		return console.NewHandler(c.Out, &console.HandlerOptions{
+			NoColor:     !color,
+			AddSource:   c.AddSource,
+			Theme:       console.NewDefaultTheme(),
+			ReplaceAttr: ChainReplaceAttrs(c.ReplaceAttrs...),
+			TimeFormat:  "15:04:05.000",
+			Headers:     []string{LoggerKey},
+			HeaderWidth: 13,
+		}), nil
+	}
+}
 
 // DefaultConfigEnvVars is a list of the environment variables
 // that ConfigFromEnv will search by default.
@@ -32,35 +88,39 @@ var DefaultConfigEnvVars = []string{"FLUME"}
 // If no environment variable is set, it silently does nothing.
 //
 // If an environment variable with a value is found, but parsing
-// fails, an error is printed to stdout, and the error is returned.
+// fails, an error is returned.
 //
 // If envvars is empty, it defaults to DefaultConfigEnvVars.
 func ConfigFromEnv(envvars ...string) error {
-	// todo: We might want to change this to just unmarshal a configuration from the environment
-	// and return the Config.  Then it could be re-used to configure multiple Controllers.  It
-	// also gives the caller the chance to further customize the Config, particularly those attributes
-	// which can't be set from json.
-	// We could also have a `MustConfig...` variant which ensures unmarshaling is successful, and panics
-	// if not?  Or a `TryConfig...` variant which prints the error to stdout like this one does?
 	if len(envvars) == 0 {
 		envvars = DefaultConfigEnvVars
 	}
-
-	var configString string
-
-	for _, v := range envvars {
-		configString = os.Getenv(v)
-		if configString != "" {
-			var config Config
-			err := json.Unmarshal([]byte(configString), &config)
-			if err != nil {
-				err = merry.Prependf(err, "parsing configuration from environment variable %v", v)
-				fmt.Println("error parsing configuration from environment variable " + v + ": " + err.Error()) //nolint:forbidigo
-			}
-			return err
-		}
+	var c Config
+	err := c.UnmarshalEnv(envvars...)
+	if err != nil {
+		return err
 	}
 
+	return c.Configure(Default())
+}
+
+func MustConfigFromEnv(envvars ...string) {
+	err := ConfigFromEnv(envvars...)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (c *Config) UnmarshalEnv(envvars ...string) error {
+	for _, v := range envvars {
+		if configString := os.Getenv(v); configString != "" {
+			err := json.Unmarshal([]byte(configString), c)
+			if err != nil {
+				return fmt.Errorf("parsing configuration from environment variable %v: %w", v, err)
+			}
+			return nil
+		}
+	}
 	return nil
 }
 
@@ -68,14 +128,14 @@ type Config struct {
 	// DefaultLevel is the default log level for all loggers not
 	// otherwise configured by Levels.  Defaults to Info.
 	DefaultLevel slog.Level `json:"defaultLevel,omitempty"`
-	// Levels configures log levels for particular named loggers.
-	Levels Levels `json:"levels,omitempty"`
 	// Encoding sets the logger's encoding. Valid values are "json",
 	// "text", "ltsv", "term", and "term-color".
 	//
 	// For compatibility with flume v1, "console" is also accepted, and
 	// is an alias for "text"
-	Encoding string `json:"encoding,omitempty"`
+	DefaultSink string `json:"defaultSink,omitempty"`
+	// Levels configures log levels for particular named loggers.
+	Levels Levels `json:"levels,omitempty"`
 	// AddSource causes the handler to compute the source code position
 	// of the log statement and add a SourceKey attribute to the output.
 	// Defaults to true when the Development flag is set, false otherwise.
@@ -93,8 +153,8 @@ const (
 
 func DevDefaults() Config {
 	return Config{
-		Encoding:  "term-color",
-		AddSource: true,
+		DefaultSink: "term-color",
+		AddSource:   true,
 	}
 }
 
@@ -181,11 +241,14 @@ func (c *Config) UnmarshalJSON(bytes []byte) error {
 
 	s := struct {
 		config
-		DefaultLevel any   `json:"defaultLevel"`
-		Level        any   `json:"level"`
-		Levels       any   `json:"levels"`
-		AddSource    *bool `json:"addSource"`
-		AddCaller    *bool `json:"addCaller"`
+		Sink         string `json:"sink"`
+		DefaultLevel any    `json:"defaultLevel"`
+		Level        any    `json:"level"`
+		Levels       any    `json:"levels"`
+		AddSource    *bool  `json:"addSource"`
+		AddCaller    *bool  `json:"addCaller"`
+		Encoding     string `json:"encoding"`
+		Out          string `json:"out"`
 	}{}
 
 	if s1.Development {
@@ -240,52 +303,44 @@ func (c *Config) UnmarshalJSON(bytes []byte) error {
 		s.config.AddSource = *s.AddSource
 	}
 
+	// allow "sink" as alias for "defaultSink"
+	if s.DefaultSink == "" {
+		s.DefaultSink = s.Sink
+	}
+
+	// for backward compat with v1, allow "encoding" as
+	// an alias for "defaultSink"
+	if s.DefaultSink == "" {
+		s.DefaultSink = s.Encoding
+	}
+
+	switch s.Out {
+	case "stdout":
+		s.config.Out = os.Stdout
+	case "stderr":
+		s.config.Out = os.Stderr
+	}
+
 	*c = Config(s.config)
 
 	return nil
 }
 
-func (c Config) Handler() slog.Handler {
-	out := c.Out
-	if out == nil {
-		out = os.Stdout
+func (c Config) Handler() (slog.Handler, error) {
+	if c.Out == nil {
+		c.Out = os.Stdout
 	}
 
-	opts := slog.HandlerOptions{
-		AddSource:   c.AddSource,
-		ReplaceAttr: ChainReplaceAttrs(c.ReplaceAttrs...),
+	if c.DefaultSink == "" {
+		c.DefaultSink = JSONSink
 	}
 
-	var handler slog.Handler
-
-	switch c.Encoding {
-	case "text", "console":
-		handler = slog.NewTextHandler(out, &opts)
-	case EncodingTerm:
-		handler = console.NewHandler(out, &console.HandlerOptions{
-			NoColor:     true,
-			AddSource:   c.AddSource,
-			Theme:       console.NewDefaultTheme(),
-			ReplaceAttr: ChainReplaceAttrs(c.ReplaceAttrs...),
-			TimeFormat:  "15:04:05.000",
-			Headers:     []string{LoggerKey},
-			HeaderWidth: 13,
-		})
-	case EncodingTermColor:
-		handler = console.NewHandler(out, &console.HandlerOptions{
-			AddSource:   c.AddSource,
-			Theme:       console.NewDefaultTheme(),
-			ReplaceAttr: ChainReplaceAttrs(c.ReplaceAttrs...),
-			TimeFormat:  "15:04:05.000",
-			Headers:     []string{LoggerKey},
-		})
-	case "json":
-		fallthrough
-	default:
-		handler = slog.NewJSONHandler(out, &opts)
+	v, ok := sinkConstructors.Load(c.DefaultSink)
+	if !ok {
+		return nil, errors.New("unknown sink constructor: " + c.DefaultSink)
 	}
-
-	return handler
+	constructor := v.(SinkConstructor)
+	return constructor(c)
 }
 
 func (c Config) Configure(ctl *Controller) error {
@@ -295,7 +350,11 @@ func (c Config) Configure(ctl *Controller) error {
 		ctl.SetLevel(name, level)
 	}
 
-	ctl.SetDefaultSink(c.Handler())
+	h, err := c.Handler()
+	if err != nil {
+		return err
+	}
+	ctl.SetDefaultSink(h)
 
 	return nil
 }

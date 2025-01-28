@@ -53,6 +53,20 @@ func init() {
 	defaultFactory.Store(NewController(slog.Default().Handler()))
 }
 
+// Default returns the default flume.Controller.  It will never be
+// nil.
 func Default() *Controller {
 	return defaultFactory.Load()
+}
+
+// SetDefault replaces the default flume.Controller.  If ctl,
+// the default flume.Controller will be reset to the standard
+// default.
+func SetDefault(ctl *Controller) {
+	if ctl == nil {
+		ctl = NewController(slog.Default().Handler())
+	}
+	if ctl != nil {
+		defaultFactory.Store(ctl)
+	}
 }

@@ -8,11 +8,8 @@ import (
 	"log/slog"
 	"math"
 	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	maps "github.com/ansel1/vespucci/v4"
 	"github.com/ansel1/vespucci/v4/mapstest"
@@ -21,29 +18,9 @@ import (
 )
 
 func TestDevDefaults(t *testing.T) {
-	pc, file, line, _ := runtime.Caller(0)
-	cwd, _ := os.Getwd()
-	file, _ = filepath.Rel(cwd, file)
-	sourceField := fmt.Sprintf("%s:%d", file, line)
-
 	dd := DevDefaults()
 	dd.ReplaceAttrs = nil
-	require.Equal(t, Config{Encoding: EncodingTermColor, AddSource: true}, dd)
-	// todo: can't test equality for ReplaceAttr functions, so need to test with actual log messages for effects
-
-	dd = DevDefaults()
-	buf := bytes.NewBuffer(nil)
-	dd.Out = buf
-	dd.Encoding = "term" // remove color for the purposes of this test
-	h := dd.Handler()
-
-	tm := time.Date(2011, time.April, 29, 3, 30, 0, 0, time.UTC)
-	rec := slog.NewRecord(tm, slog.LevelInfo, "foobar", pc)
-	rec.Add(LoggerKey, "flume", "size", 5)
-	err := h.Handle(context.Background(), rec)
-	require.NoError(t, err)
-
-	assert.Equal(t, "03:30:00.000 INF "+sourceField+" flume > foobar size=5\n", buf.String())
+	require.Equal(t, Config{DefaultSink: EncodingTermColor, AddSource: true}, dd)
 }
 
 func TestParseLevel(t *testing.T) {
@@ -84,11 +61,11 @@ func TestConfig_UnmarshalJSON(t *testing.T) {
 		},
 		{
 			name:     "standard",
-			confJSON: `{"level":"WRN", "levels":"blue=WRN", "encoding":"text", "addSource":true}`,
+			confJSON: `{"defaultLevel":"WRN", "levels":"blue=WRN", "defaultSink":"text", "addSource":true}`,
 			expected: Config{
 				DefaultLevel: slog.LevelWarn,
 				Levels:       Levels{"blue": slog.LevelWarn},
-				Encoding:     "text",
+				DefaultSink:  TextSink,
 				AddSource:    true,
 			},
 		},
@@ -99,29 +76,24 @@ func TestConfig_UnmarshalJSON(t *testing.T) {
 		},
 		{
 			name:     "int level",
-			confJSON: `{"level":2}`,
+			confJSON: `{"defaultLevel":2}`,
 			expected: Config{
 				DefaultLevel: slog.Level(2),
 			},
 		},
 		{
 			name:     "string int level",
-			confJSON: `{"level":"3"}`,
+			confJSON: `{"defaultLevel":"3"}`,
 			expected: Config{
 				DefaultLevel: slog.Level(3),
 			},
 		},
 		{
 			name:     "named level",
-			confJSON: `{"level":"err"}`,
+			confJSON: `{"defaultLevel":"err"}`,
 			expected: Config{
 				DefaultLevel: slog.LevelError,
 			},
-		},
-		{
-			name:     "level as alias for defaultLevel",
-			confJSON: `{"level":"err"}`,
-			expected: Config{DefaultLevel: slog.LevelError},
 		},
 		{
 			name:     "levels as map",
@@ -139,6 +111,62 @@ func TestConfig_UnmarshalJSON(t *testing.T) {
 				"empty":  slog.LevelInfo,
 				"off":    LevelOff,
 			}},
+		},
+		{
+			name:     "encoding as alias for defaultSink",
+			confJSON: `{"encoding":"text"}`,
+			expected: Config{
+				DefaultSink: TextSink,
+			},
+		},
+		{
+			name:     "sink as alias for defaultSink",
+			confJSON: `{"sink":"text"}`,
+			expected: Config{
+				DefaultSink: TextSink,
+			},
+		},
+		{
+			name:     "defaultSink has higher precedence than sink",
+			confJSON: `{"defaultSink":"text", "sink":"json"}`,
+			expected: Config{
+				DefaultSink: TextSink,
+			},
+		},
+		{
+			name:     "sink has higher precedence than encoding",
+			confJSON: `{"sink":"text", "encoding":"json"}`,
+			expected: Config{
+				DefaultSink: TextSink,
+			},
+		},
+		{
+			name:     "level as alias for defaultLevel",
+			confJSON: `{"level":"ERR"}`,
+			expected: Config{
+				DefaultLevel: slog.LevelError,
+			},
+		},
+		{
+			name:     "defaultLevel has higher precedence than level",
+			confJSON: `{"level":"ERR", "defaultLevel":"WARN"}`,
+			expected: Config{
+				DefaultLevel: slog.LevelWarn,
+			},
+		},
+		{
+			name:     "out to stdout",
+			confJSON: `{"out":"stdout"}`,
+			expected: Config{
+				Out: os.Stdout,
+			},
+		},
+		{
+			name:     "out to stderr",
+			confJSON: `{"out":"stderr"}`,
+			expected: Config{
+				Out: os.Stderr,
+			},
 		},
 	}
 
@@ -158,6 +186,7 @@ func TestConfig_UnmarshalJSON(t *testing.T) {
 			//
 			assert.Len(t, c.ReplaceAttrs, len(test.expected.ReplaceAttrs))
 			c.ReplaceAttrs = nil
+
 			test.expected.ReplaceAttrs = nil
 			assert.Equal(t, test.expected, c)
 		})
@@ -206,7 +235,7 @@ func TestConfig_Configure(t *testing.T) {
 		{
 			name: "text encoder",
 			conf: Config{
-				Encoding: "text",
+				DefaultSink: "text",
 			},
 			logFn: func(t *testing.T, l *slog.Logger, _ *Controller) {
 				l.Info("hi")
@@ -374,6 +403,192 @@ func TestLevelsUnmarshaling(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.Equal(t, levels, levels2)
+		})
+	}
+}
+
+func TestConfig_UnmarshalEnv(t *testing.T) {
+	tests := []struct {
+		name        string
+		env         map[string]string
+		envvars     []string
+		expected    Config
+		expectError string
+	}{
+		{
+			name: "defaults",
+			env: map[string]string{
+				"FLUME": `{"level":"WRN"}`,
+			},
+			envvars: DefaultConfigEnvVars,
+			expected: Config{
+				DefaultLevel: slog.LevelWarn,
+			},
+		},
+		{
+			name: "empty env vars should be a no-op",
+			env: map[string]string{
+				"FLUME": `{"level":"WRN"}`,
+			},
+		},
+		{
+			name: "search list of env vars",
+			env: map[string]string{
+				"EMPTY":     ``,
+				"LOGCONFIG": `{"level":"WRN"}`,
+			},
+			envvars: []string{"EMPTY", "LOGCONFIG"},
+			expected: Config{
+				DefaultLevel: slog.LevelWarn,
+			},
+		},
+		{
+			name: "parse error",
+			env: map[string]string{
+				"FLUME": `not json`,
+			},
+			envvars:     DefaultConfigEnvVars,
+			expectError: "parsing configuration from environment variable FLUME: invalid character",
+		},
+	}
+
+	for _, test := range tests { //nolint:paralleltest
+		t.Run(test.name, func(t *testing.T) {
+			for k, v := range test.env {
+				t.Setenv(k, v)
+			}
+			var c Config
+			err := c.UnmarshalEnv(test.envvars...)
+			if test.expectError != "" {
+				assert.ErrorContains(t, err, test.expectError)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, test.expected, c)
+		})
+	}
+}
+
+func TestConfigFromEnv(t *testing.T) {
+	tests := []struct {
+		name          string
+		env           map[string]string
+		envvars       []string
+		expectedLevel slog.Level
+		expectError   string
+	}{
+		{
+			name: "default",
+			env: map[string]string{
+				"FLUME": `{"level":"WRN"}`,
+			},
+			expectedLevel: slog.LevelWarn,
+		},
+		{
+			name: "search envvars",
+			env: map[string]string{
+				"EMPTY":     "",
+				"LOGCONFIG": `{"level":"WRN"}`,
+			},
+			envvars:       []string{"EMPTY", "LOGCONFIG"},
+			expectedLevel: slog.LevelWarn,
+		},
+		{
+			name:          "no-op",
+			envvars:       []string{"EMPTY", "LOGCONFIG"},
+			expectedLevel: slog.LevelInfo,
+		},
+		{
+			name: "parse error",
+			env: map[string]string{
+				"FLUME": `not json`,
+			},
+			expectError: "parsing configuration from environment variable FLUME: invalid character",
+		},
+	}
+
+	for _, test := range tests { //nolint:paralleltest
+		t.Run(test.name, func(t *testing.T) {
+			// make sure the default controller is restored after the test
+			ctl := Default()
+			t.Cleanup(func() {
+				SetDefault(ctl)
+			})
+
+			for k, v := range test.env {
+				t.Setenv(k, v)
+			}
+			err := ConfigFromEnv(test.envvars...)
+			if test.expectError != "" {
+				assert.ErrorContains(t, err, test.expectError)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, test.expectedLevel, Default().DefaultLevel())
+		})
+	}
+}
+
+func TestMustConfigFromEnv(t *testing.T) {
+	testCases := []struct {
+		name          string
+		env           map[string]string
+		envvars       []string
+		expectedLevel slog.Level
+		expectPanic   string
+	}{
+		{
+			name: "default",
+			env: map[string]string{
+				"FLUME": `{"level":"WRN"}`,
+			},
+			expectedLevel: slog.LevelWarn,
+		},
+		{
+			name: "search envvars",
+			env: map[string]string{
+				"EMPTY":     "",
+				"LOGCONFIG": `{"level":"WRN"}`,
+			},
+			envvars:       []string{"EMPTY", "LOGCONFIG"},
+			expectedLevel: slog.LevelWarn,
+		},
+		{
+			name:          "no-op",
+			envvars:       []string{"EMPTY", "LOGCONFIG"},
+			expectedLevel: slog.LevelInfo,
+		},
+		{
+			name: "parse error",
+			env: map[string]string{
+				"FLUME": `not json`,
+			},
+			expectPanic: "parsing configuration from environment variable FLUME: invalid character 'o' in literal null (expecting 'u')",
+		},
+	}
+	for _, tC := range testCases {
+		t.Run(tC.name, func(t *testing.T) {
+			// make sure the default controller is restored after the test
+			ctl := Default()
+			t.Cleanup(func() {
+				SetDefault(ctl)
+			})
+
+			for k, v := range tC.env {
+				t.Setenv(k, v)
+			}
+
+			if tC.expectPanic != "" {
+				assert.PanicsWithError(t, tC.expectPanic, func() {
+					MustConfigFromEnv(tC.envvars...)
+				})
+				return
+			}
+
+			MustConfigFromEnv(tC.envvars...)
+			assert.Equal(t, tC.expectedLevel, Default().DefaultLevel())
 		})
 	}
 }

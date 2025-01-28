@@ -18,11 +18,11 @@
 - [x] still not crazy about some of the names, in particular "conf" and "delegate".  How about "sink" for the delegate handler?
 - [x] add convenience methods for creating a handler *and* creating a new logger from it.
 - [x] Add a convenience method for loading configuration from the environment, like in v1
-- [ ] Add a way to register additional handlers to "encoder" values in config, and maybe change the name "Encoder" to "Handler", "DefaultDelegate", "DefaultSink", etc
+- [x] Add a way to register additional handlers to "encoder" values in config, and maybe change the name "Encoder" to "Handler", "DefaultDelegate", "DefaultSink", etc
 - [ ] Add an option to Config for v1 compatibility
   - installs the DetailedErrors ReplaceAttr
   - And what else?
-- [ ] Review ConfigFromEnv().  Not sure if I should break that down more.
+- [x] Review ConfigFromEnv().  Not sure if I should break that down more.
 - [ ] Docs
 - [ ] flumetest, and could this be replaced by https://github.com/neilotoole/slogt/blob/master/slogt.go
 - [ ] LoggerWriter, could this be replaced by an off the shelf sink?
@@ -43,4 +43,4 @@
 - [ ] A gofix style tool to migrate a codebase from v1 to v2, and migrating from Log() to LogCtx() calls?
 - [x] I think the states need to be re-organized back into a parent-child graph, and sinks need to trickle down that tree.  Creating all the handlers and states in conf isn't working the way it was intended.  Rebuilding the leaf handlers is grouping the cached attrs wrong (need tests to verify this), and is also inefficient, since it creates inefficient calls to the sink's WithAttrs()
 - [x] Add a middleware which supports ReplaceAttr.  Could be used to add ReplaceAttr support to Handlers which don't natively support it
-  - [ ] We could then promote ReplaceAttr support to the root of Config.  If the selected handler natively supports ReplaceAttr, great, otherwise we can add the middleware.  To support this, change the way handlers are registered with Config, so that each registration provides a factory method for building the handler, which can take the Config object, and adapt it to the native options that handler supports.
+  - [x] We could then promote ReplaceAttr support to the root of Config.  If the selected handler natively supports ReplaceAttr, great, otherwise we can add the middleware.  To support this, change the way handlers are registered with Config, so that each registration provides a factory method for building the handler, which can take the Config object, and adapt it to the native options that handler supports.

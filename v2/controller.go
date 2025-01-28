@@ -105,10 +105,25 @@ func (c *Controller) SetSink(name string, sink slog.Handler) {
 	}
 }
 
+func (c *Controller) Sink(name string) slog.Handler {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	if name == allHandlers {
+		return c.defaultSink
+	}
+
+	return c.conf(name).sink
+}
+
 // SetDefaultSink configures the default sink handler for all flume handlers managed
 // by this controller.
 func (c *Controller) SetDefaultSink(handler slog.Handler) {
 	c.SetSink(allHandlers, handler)
+}
+
+func (c *Controller) DefaultSink() slog.Handler {
+	return c.Sink(allHandlers)
 }
 
 // SetLevel sets the log level for flume handlers with the given name, overriding
@@ -133,10 +148,25 @@ func (c *Controller) SetLevel(name string, l slog.Level) {
 	}
 }
 
+func (c *Controller) Level(name string) slog.Level {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	if name == allHandlers {
+		return c.defaultLevel
+	}
+
+	return c.conf(name).lvl.Level()
+}
+
 // SetDefaultLevel sets the default log level for all flume handlers managed by this
 // controller.
 func (c *Controller) SetDefaultLevel(l slog.Level) {
 	c.SetLevel(allHandlers, l)
+}
+
+func (c *Controller) DefaultLevel() slog.Level {
+	return c.Level(allHandlers)
 }
 
 // Use applies middleware to the sink for flume handlers with the given name.
