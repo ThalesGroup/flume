@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
+	"time"
 )
 
 // const badKey = "!BADKEY"
@@ -143,26 +145,24 @@ func DetailedErrors(_ []string, a slog.Attr) slog.Attr {
 // }
 
 func applyReplaceAttrs(groups []string, a slog.Attr, fns []func([]string, slog.Attr) slog.Attr) slog.Attr {
-	for i, fn := range fns {
+	// assume that the value has already been resolved by the calling handler.  That's part
+	// of the contract
+	for _, fn := range fns {
 		if fn == nil {
 			continue
 		}
 		a = fn(groups, a)
+
+		if a.Equal(slog.Attr{}) {
+			// one of the functions returned an empty attr, which
+			// is the equivalent of deleting the attr, so we're done.
+			return a
+		}
+
 		a.Value = a.Value.Resolve()
-		// if a is a group, and there are still more functions to apply,
-		// apply the rest of the functions to the members of the group.
-		// ReplaceAttrs functions are never applied to Group attrs themselves,
-		// only to the children
-		if a.Value.Kind() == slog.KindGroup && i < len(fns)-1 {
-			if a.Key != "" {
-				groups = append(groups, a.Key)
-			}
-			childAttrs := a.Value.Group()
-			for i2, childAttr := range childAttrs {
-				childAttr.Value = childAttr.Value.Resolve()
-				childAttrs[i2] = applyReplaceAttrs(groups, childAttr, fns[i+1:])
-			}
-			// since we recursed to apply the rest of the functions, stop now
+		if a.Value.Kind() == slog.KindGroup {
+			// ReplaceAttr is only run on non-group attrs.  We can stop.
+			// The handler will take care of call us again on the members.
 			return a
 		}
 	}
@@ -170,6 +170,7 @@ func applyReplaceAttrs(groups []string, a slog.Attr, fns []func([]string, slog.A
 	return a
 }
 
+// ChainReplaceAttrs composes a series of ReplaceAttr functions into a single ReplaceAttr function.
 func ChainReplaceAttrs(fns ...func([]string, slog.Attr) slog.Attr) func([]string, slog.Attr) slog.Attr {
 	switch len(fns) {
 	case 0:
@@ -182,6 +183,137 @@ func ChainReplaceAttrs(fns ...func([]string, slog.Attr) slog.Attr) func([]string
 			return applyReplaceAttrs(groups, a, fns)
 		}
 	}
+}
+
+// ReplaceAttrs is middleware which adds ReplaceAttr support to other Handlers
+// which don't natively have it.
+// Because this can only act on the slog.Record as it passes through the middleware,
+// it has limitations regarding the built-in fields:
+//
+//   - slog.SourceKey: skipped
+//   - slog.MessageKey: ignores changes to the key name.  If the returned value is empty, the message will
+//     be set to the value `<nil>`.  Non-string values are coerced to a string like `fmt.Print`
+//   - slog.TimeKey: ignores changes to the key name.  If the value returned is not empty or a time.Time{}, it is
+//     ignored.
+//   - slog.LevelKey: ignores changes to the key name.  If the value returned is not empty or a slog.Level, it is
+//     ignored.
+func ReplaceAttrs(fns ...func([]string, slog.Attr) slog.Attr) Middleware {
+	fn := ChainReplaceAttrs(fns...)
+	if fn == nil {
+		// no-op
+		return MiddlewareFunc(func(h slog.Handler) slog.Handler {
+			return h
+		})
+	}
+
+	return MiddlewareFunc(func(h slog.Handler) slog.Handler {
+		return &replaceAttrsMiddleware{
+			next:        h,
+			replaceAttr: ChainReplaceAttrs(fns...),
+		}
+	})
+}
+
+type replaceAttrsMiddleware struct {
+	next        slog.Handler
+	groups      []string
+	replaceAttr func([]string, slog.Attr) slog.Attr
+}
+
+func (h *replaceAttrsMiddleware) Enabled(ctx context.Context, level slog.Level) bool {
+	return h.next.Enabled(ctx, level)
+}
+
+func (h *replaceAttrsMiddleware) Handle(ctx context.Context, record slog.Record) error {
+	// TODO: apply ReplaceAttrs to the built-in attrs as well
+
+	var replacedBuiltIns [3]slog.Attr
+	replaced := replacedBuiltIns[:0]
+
+	attr := h.replaceAttr(nil, slog.String(slog.MessageKey, record.Message))
+	record.Message = attr.Value.String()
+
+	attr = h.replaceAttr(nil, slog.Time(slog.TimeKey, record.Time))
+	if attr.Value.Kind() == slog.KindTime {
+		record.Time = attr.Value.Time()
+	} else if attr.Value.Equal(slog.Value{}) {
+		record.Time = time.Time{}
+	}
+
+	attr = h.replaceAttr(nil, slog.Any(slog.LevelKey, record.Level))
+	if attr.Value.Kind() == slog.KindAny && attr.Key == slog.LevelKey {
+		if lvl, ok := attr.Value.Any().(slog.Level); ok {
+			record.Level = lvl
+		}
+	} else if attr.Value.Equal(slog.Value{}) {
+		record.Level = slog.LevelInfo
+	}
+
+	if record.NumAttrs() == 0 && len(replaced) == 0 {
+		return h.next.Handle(ctx, record)
+	}
+
+	newRecord := slog.NewRecord(record.Time, record.Level, record.Message, record.PC)
+	newRecord.AddAttrs(replaced...)
+	record.Attrs(func(a slog.Attr) bool {
+		a = h.applyReplaceAttrRecurse(h.groups, a)
+		if !a.Equal(slog.Attr{}) {
+			newRecord.AddAttrs(a)
+		}
+		return true
+	})
+	return h.next.Handle(ctx, newRecord)
+}
+
+func (h *replaceAttrsMiddleware) WithAttrs(attrs []slog.Attr) slog.Handler {
+	attrs = h.applyReplaceAttr(h.groups, attrs)
+	if len(attrs) == 0 {
+		// all attrs resolved to empty, so no-op
+		return h
+	}
+	return &replaceAttrsMiddleware{
+		next:        h.next.WithAttrs(attrs),
+		replaceAttr: h.replaceAttr,
+		groups:      h.groups,
+	}
+}
+
+func (h *replaceAttrsMiddleware) WithGroup(name string) slog.Handler {
+	return &replaceAttrsMiddleware{
+		next:        h.next.WithGroup(name),
+		replaceAttr: h.replaceAttr,
+		groups:      slices.Clip(append(h.groups, name)),
+	}
+}
+
+func (h *replaceAttrsMiddleware) applyReplaceAttrRecurse(groups []string, attr slog.Attr) slog.Attr {
+	attr.Value = attr.Value.Resolve()
+
+	if attr.Value.Kind() != slog.KindGroup {
+		attr = h.replaceAttr(h.groups, attr)
+		attr.Value = attr.Value.Resolve()
+		return attr
+	}
+
+	members := h.applyReplaceAttr(append(groups, attr.Key), attr.Value.Group())
+
+	if len(members) == 0 {
+		// empty group, elide
+		return slog.Attr{}
+	}
+	attr.Value = slog.GroupValue(members...)
+	return attr
+}
+
+func (h *replaceAttrsMiddleware) applyReplaceAttr(groups []string, attrs []slog.Attr) []slog.Attr {
+	newAttrs := attrs[:0]
+	for _, attr := range attrs {
+		attr = h.applyReplaceAttrRecurse(groups, attr)
+		if !attr.Equal(slog.Attr{}) {
+			newAttrs = append(newAttrs, attr)
+		}
+	}
+	return newAttrs
 }
 
 // func er(_ []string, a slog.Attr) slog.Attr {

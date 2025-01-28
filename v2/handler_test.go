@@ -24,14 +24,18 @@ func removeKeys(keys ...string) func([]string, slog.Attr) slog.Attr {
 	}
 }
 
+func replaceKey(key string, newAttr slog.Attr) func([]string, slog.Attr) slog.Attr {
+	return func(_ []string, a slog.Attr) slog.Attr {
+		if a.Key == key {
+			return newAttr
+		}
+
+		return a
+	}
+}
+
 func TestHandlers(t *testing.T) {
-	tests := []struct {
-		name      string
-		wantJSON  string
-		wantText  string
-		level     slog.Level
-		handlerFn func(t *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler
-	}{
+	tests := []handlerTest{
 		{
 			name: "nil",
 			handlerFn: func(_ *testing.T, _ *bytes.Buffer, _ *slog.HandlerOptions) slog.Handler {
@@ -39,15 +43,17 @@ func TestHandlers(t *testing.T) {
 			},
 		},
 		{
-			name:     "factory constructor",
-			wantJSON: `{"level": "INFO", "logger": "h1", "msg":"hi"}`,
+			name: "factory constructor",
+			want: `{"level": "INFO", "logger": "h1", "msg":"hi"}`,
+			json: true,
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				return NewController(slog.NewJSONHandler(buf, opts)).Handler("h1")
 			},
 		},
 		{
-			name:     "change default sink before handler",
-			wantJSON: `{"level": "INFO", "logger": "h1", "msg":"hi"}`,
+			name: "change default sink before handler",
+			want: `{"level": "INFO", "logger": "h1", "msg":"hi"}`,
+			json: true,
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(nil)
 				f.SetDefaultSink(slog.NewJSONHandler(buf, opts))
@@ -56,8 +62,8 @@ func TestHandlers(t *testing.T) {
 			},
 		},
 		{
-			name:     "change default sink after handler",
-			wantText: "level=INFO msg=hi logger=h1\n",
+			name: "change default sink after handler",
+			want: "level=INFO msg=hi logger=h1\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
 				h := f.Handler("h1")
@@ -67,8 +73,9 @@ func TestHandlers(t *testing.T) {
 			},
 		},
 		{
-			name:     "change other sink before handler",
-			wantJSON: `{"level":  "INFO", "logger": "h1", "msg":"hi"}`,
+			name: "change other sink before handler",
+			want: `{"level":  "INFO", "logger": "h1", "msg":"hi"}`,
+			json: true,
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
 				f.SetSink("h2", slog.NewTextHandler(buf, opts))
@@ -77,8 +84,8 @@ func TestHandlers(t *testing.T) {
 			},
 		},
 		{
-			name:     "change sink before handler",
-			wantText: "level=INFO msg=hi logger=h1\n",
+			name: "change sink before handler",
+			want: "level=INFO msg=hi logger=h1\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
 				f.SetSink("h1", slog.NewTextHandler(buf, opts))
@@ -87,8 +94,8 @@ func TestHandlers(t *testing.T) {
 			},
 		},
 		{
-			name:     "change sink after handler",
-			wantText: "level=INFO msg=hi logger=h1\n",
+			name: "change sink after handler",
+			want: "level=INFO msg=hi logger=h1\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
 				h := f.Handler("h1")
@@ -98,8 +105,8 @@ func TestHandlers(t *testing.T) {
 			},
 		},
 		{
-			name:     "WithXXX",
-			wantText: "level=INFO msg=hi logger=h1 props.color=red\n",
+			name: "WithXXX",
+			want: "level=INFO msg=hi logger=h1 props.color=red\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewTextHandler(buf, opts))
 				h := f.Handler("h1")
@@ -109,8 +116,8 @@ func TestHandlers(t *testing.T) {
 			},
 		},
 		{
-			name:     "change sink after WithXXX",
-			wantText: "level=INFO msg=hi logger=h1 size=big props.color=red props.address.street=mockingbird\n",
+			name: "change sink after WithXXX",
+			want: "level=INFO msg=hi logger=h1 size=big props.color=red props.address.street=mockingbird\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
 				h := f.Handler("h1")
@@ -122,8 +129,8 @@ func TestHandlers(t *testing.T) {
 			},
 		},
 		{
-			name:     "change sink before WithXXX",
-			wantText: "level=INFO msg=hi logger=h1 size=big props.color=red props.address.street=mockingbird\n",
+			name: "change sink before WithXXX",
+			want: "level=INFO msg=hi logger=h1 size=big props.color=red props.address.street=mockingbird\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
 				f.SetSink("h1", slog.NewTextHandler(buf, opts))
@@ -155,8 +162,9 @@ func TestHandlers(t *testing.T) {
 			},
 		},
 		{
-			name:     "set other logger to nil",
-			wantJSON: `{"level":  "INFO", "logger": "h1", "msg":"hi"}`,
+			name: "set other logger to nil",
+			want: `{"level":  "INFO", "logger": "h1", "msg":"hi"}`,
+			json: true,
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
 				h := f.Handler("h1")
@@ -166,24 +174,25 @@ func TestHandlers(t *testing.T) {
 			},
 		},
 		{
-			name:     "default",
-			wantJSON: `{"level":  "INFO", "logger": "def1", "msg":"hi"}`,
+			name: "default",
+			want: `{"level":  "INFO", "logger": "def1", "msg":"hi"}`,
+			json: true,
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				Default().SetDefaultSink(slog.NewJSONHandler(buf, opts))
 				return Handler("def1")
 			},
 		},
 		{
-			name:     "default with text",
-			wantText: "level=INFO msg=hi logger=def1\n",
+			name: "default with text",
+			want: "level=INFO msg=hi logger=def1\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				Default().SetDefaultSink(slog.NewTextHandler(buf, opts))
 				return Handler("def1")
 			},
 		},
 		{
-			name:     "default with specific logger",
-			wantText: "level=INFO msg=hi logger=def2\n",
+			name: "default with specific logger",
+			want: "level=INFO msg=hi logger=def2\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				Default().SetDefaultSink(slog.NewJSONHandler(buf, opts))
 				Default().SetSink("def2", slog.NewTextHandler(buf, opts))
@@ -201,9 +210,9 @@ func TestHandlers(t *testing.T) {
 			},
 		},
 		{
-			name:     "set default log level",
-			level:    slog.LevelDebug,
-			wantText: "level=DEBUG msg=hi logger=def1\n",
+			name:  "set default log level",
+			level: slog.LevelDebug,
+			want:  "level=DEBUG msg=hi logger=def1\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				Default().SetDefaultSink(slog.NewTextHandler(buf, opts))
 				Default().SetDefaultLevel(slog.LevelDebug)
@@ -212,9 +221,9 @@ func TestHandlers(t *testing.T) {
 			},
 		},
 		{
-			name:     "set specific log level",
-			level:    slog.LevelDebug,
-			wantText: "level=DEBUG msg=hi logger=TestHandlers/set_specific_log_level\n",
+			name:  "set specific log level",
+			level: slog.LevelDebug,
+			want:  "level=DEBUG msg=hi logger=TestHandlers/set_specific_log_level\n",
 			handlerFn: func(t *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				Default().SetDefaultSink(slog.NewTextHandler(buf, opts))
 				Default().SetDefaultLevel(slog.LevelInfo)
@@ -224,8 +233,8 @@ func TestHandlers(t *testing.T) {
 			},
 		},
 		{
-			name:     "ensure cloned slices",
-			wantText: "level=INFO msg=hi logger=h1 props.flavor=lemon props.color=red\n",
+			name: "ensure cloned slices",
+			want: "level=INFO msg=hi logger=h1 props.flavor=lemon props.color=red\n",
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				ctl := NewController(slog.NewTextHandler(buf, opts))
 				h1 := ctl.Handler("h1").WithGroup("props").WithAttrs([]slog.Attr{slog.String("flavor", "lemon")})
@@ -241,20 +250,46 @@ func TestHandlers(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			buf := bytes.NewBuffer(nil)
-			h := test.handlerFn(t, buf, &slog.HandlerOptions{ReplaceAttr: removeKeys(slog.TimeKey)})
-			l := slog.New(h)
-			l.Log(context.Background(), test.level, "hi")
-			switch {
-			case test.wantJSON != "":
-				assert.JSONEq(t, test.wantJSON, buf.String())
-			case test.wantText != "":
-				assert.Equal(t, test.wantText, buf.String())
-			default:
-				assert.Empty(t, buf.String())
-			}
-		})
+		t.Run(test.name, test.Run)
+	}
+}
+
+const emptyMsg = "<<<EMPTY>>>"
+
+type handlerTest struct {
+	name string
+	json bool
+	want string
+	// defaults to "hi".  set to emptyMsg to use an empty message.
+	msg   string
+	level slog.Level
+	args  []any
+
+	handlerFn func(t *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler
+}
+
+func (ht handlerTest) Run(t *testing.T) {
+	t.Helper()
+	buf := bytes.NewBuffer(nil)
+	h := ht.handlerFn(t, buf, &slog.HandlerOptions{ReplaceAttr: removeKeys(slog.TimeKey)})
+	l := slog.New(h)
+
+	msg := ht.msg
+	switch msg {
+	case "":
+		msg = "hi"
+	case emptyMsg:
+		msg = ""
+	}
+
+	l.Log(context.Background(), ht.level, msg, ht.args...)
+	switch {
+	case ht.want == "":
+		assert.Empty(t, buf.String())
+	case ht.json:
+		assert.JSONEq(t, ht.want, buf.String())
+	default:
+		assert.Equal(t, ht.want, buf.String())
 	}
 }
 
