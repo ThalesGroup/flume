@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -99,9 +100,28 @@ func TestHandlers(t *testing.T) {
 			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
 				f := NewController(slog.NewJSONHandler(buf, opts))
 				h := f.Handler("h1")
+
+				// Do two info logs and check the output.  This exercises the memoization code
+				h.Handle(context.Background(), slog.NewRecord(time.Time{}, slog.LevelInfo, "hi", 0))
+				assert.Contains(t, buf.String(), `"level":"INFO"`)
+				buf.Reset()
+				h.Handle(context.Background(), slog.NewRecord(time.Time{}, slog.LevelInfo, "hi", 0))
+				assert.Contains(t, buf.String(), `"level":"INFO"`)
+				buf.Reset()
+
 				f.SetSink("h1", slog.NewTextHandler(buf, opts))
 
 				return h
+			},
+		},
+		{
+			name: "change sink to nil",
+			want: "",
+			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
+				f := NewController(slog.NewJSONHandler(buf, opts))
+				f.SetSink("h1", nil)
+
+				return f.Handler("h1")
 			},
 		},
 		{
@@ -409,39 +429,14 @@ func TestLevels(t *testing.T) {
 	}
 }
 
-//nolint:dupword
-// func chainReplaceAttrs(funcs ...func(groups []string, a slog.Attr) slog.Attr) func(groups []string, a slog.Attr) slog.Attr {
-// 	return func(groups []string, a slog.Attr) slog.Attr {
-// 		for _, f := range funcs {
-// 			a = f(groups, a)
-// 		}
-// 		return a
-// 	}
-// }
-//
-// func TestLogging(t *testing.T) {
-// 	SetDefaultHandler(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{ReplaceAttr: chainReplaceAttrs(
-// 		removeKeys(slog.TimeKey),
-// 		func(_ []string, a slog.Attr) slog.Attr {
-// 			if a.Value.Kind() == slog.KindAny {
-// 				if e, ok := a.Value.Any().(error); ok {
-// 					a.Value = slog.AnyValue(ErrorLogValue{err: e})
-// 				}
-// 			}
-// 			return a
-// 		},
-// 	)}))
-// 	logger := slog.New(NewHandler("main"))
-// 	logger.Info("hi", "color", merry.New("boom"))
-// }
-//
-// type ErrorLogValue struct {
-// 	err error
-// }
-//
-// func (e ErrorLogValue) LogValue() slog.Value {
-// 	return slog.GroupValue(
-// 		slog.String("msg", e.err.Error()),
-// 		slog.String("verbose", merry.Details(e.err)),
-// 	)
-// }
+func TestNoopHandler(t *testing.T) {
+	// noop should always return false for Enabled
+	assert.False(t, noop.Enabled(context.Background(), LevelAll))
+
+	// noop should return itself for WithAttrs and WithGroup
+	assert.Equal(t, noop, noop.WithAttrs([]slog.Attr{slog.String("foo", "bar")}))
+	assert.Equal(t, noop, noop.WithGroup("group"))
+
+	// noop should do nothing for Handle
+	assert.NoError(t, noop.Handle(context.Background(), slog.NewRecord(time.Time{}, slog.LevelInfo, "hi", 0)))
+}

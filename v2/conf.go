@@ -17,8 +17,8 @@ type conf struct {
 	globalMiddleware []Middleware
 }
 
-func (c *conf) setSink(sink slog.Handler, isDefault bool) {
-	if c.customSink && isDefault {
+func (c *conf) setSink(sink slog.Handler, isDefault, replace bool) {
+	if !replace && c.customSink && isDefault {
 		return
 	}
 
@@ -50,27 +50,23 @@ func (c *conf) rebuildDelegate() {
 	c.delegatePtr.Store(&h)
 }
 
-func (c *conf) setLevel(l slog.Level, isDefault bool) {
-	// don't need a mutex here.  this is already protected
-	// by the Controller mutex, and the `lvl` pointer itself
-	// is immutable.
-	switch {
-	case isDefault && !c.customLvl:
-		c.lvl.Set(l)
-	case !isDefault:
-		c.customLvl = true
-		c.lvl.Set(l)
+func (c *conf) setLevel(l slog.Level, isDefault, replace bool) {
+	if !replace && c.customLvl && isDefault {
+		return
 	}
+
+	c.customLvl = !isDefault
+
+	c.lvl.Set(l)
 }
 
-func (c *conf) use(middleware ...Middleware) {
-	c.middleware = append(c.middleware, middleware...)
-
-	c.rebuildDelegate()
-}
-
-func (c *conf) setGlobalMiddleware(middleware []Middleware) {
-	c.globalMiddleware = middleware
+func (c *conf) use(global []Middleware, replace bool, local ...Middleware) {
+	c.globalMiddleware = global
+	if replace {
+		c.middleware = local
+	} else {
+		c.middleware = append(c.middleware, local...)
+	}
 
 	c.rebuildDelegate()
 }

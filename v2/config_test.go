@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -20,19 +21,19 @@ import (
 func TestDevDefaults(t *testing.T) {
 	dd := DevDefaults()
 	dd.ReplaceAttrs = nil
-	require.Equal(t, Config{DefaultSink: EncodingTermColor, AddSource: true}, dd)
+	require.Equal(t, Config{DefaultSink: TermColorSink, AddSource: true}, dd)
 }
 
 func TestParseLevel(t *testing.T) {
 	tests := map[slog.Level][]any{
-		slog.LevelDebug:    {"DBG", "DEBUG", float64(-4), "-4"},
-		slog.LevelWarn:     {"WRN", "WARN", float64(4), "4"},
-		slog.LevelInfo:     {"INF", "INFO", float64(0), "0", "", nil},
-		slog.LevelError:    {"ERR", "ERROR", "erRor", "eRr", float64(8), "8"},
-		slog.LevelWarn + 3: {"WRN+3", "WARN+3"},
-		slog.LevelWarn - 2: {"WRN-2", "WARN-2"},
-		math.MaxInt:        {"OFF"},
-		math.MinInt:        {"ALL"},
+		slog.LevelDebug:    {"DBG", "DEBUG", float64(-4), "-4", int(-4)},
+		slog.LevelWarn:     {"WRN", "WARN", float64(4), "4", int(4)},
+		slog.LevelInfo:     {"INF", "INFO", float64(0), "0", int(0), "", nil},
+		slog.LevelError:    {"ERR", "ERROR", "erRor", "eRr", float64(8), "8", int(8)},
+		slog.LevelWarn + 3: {"WRN+3", "WARN+3", int(slog.LevelWarn + 3)},
+		slog.LevelWarn - 2: {"WRN-2", "WARN-2", int(slog.LevelWarn - 2)},
+		math.MaxInt:        {"OFF", int(math.MaxInt), false},
+		math.MinInt:        {"ALL", int(math.MinInt), true},
 	}
 
 	for level, aliases := range tests {
@@ -44,6 +45,37 @@ func TestParseLevel(t *testing.T) {
 				require.Equal(t, level, l)
 			})
 		}
+	}
+}
+
+func TestParseLevel_error(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     any
+		wantError string
+	}{
+		{
+			name:      "invalid string",
+			input:     "INVALID",
+			wantError: "invalid log level 'INVALID': slog: level string \"INVALID\": unknown name",
+		},
+		{
+			name:      "map",
+			input:     map[string]string{},
+			wantError: "levels must be a string or int value",
+		},
+		{
+			name:      "invalid level modifier",
+			input:     "WRN+invalid",
+			wantError: "invalid log level 'WRN+invalid': slog: level string \"WARN+INVALID\": strconv.Atoi: parsing \"+INVALID\": invalid syntax",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := parseLevel(tt.input)
+			assert.ErrorContains(t, err, tt.wantError)
+		})
 	}
 }
 
@@ -168,6 +200,31 @@ func TestConfig_UnmarshalJSON(t *testing.T) {
 				Out: os.Stderr,
 			},
 		},
+		{
+			name:          "invalid JSON",
+			confJSON:      `{out:"stderr"}`,
+			expectedError: "invalid character 'o' looking for beginning of object key string",
+		},
+		{
+			name:          "invalid level",
+			confJSON:      `{"level":"INVALID"}`,
+			expectedError: "invalid log level 'INVALID': slog: level string \"INVALID\": unknown name",
+		},
+		{
+			name:          "invalid levels string",
+			confJSON:      `{"levels":"*=INVALID"}`,
+			expectedError: "invalid log level 'INVALID': slog: level string \"INVALID\": unknown name",
+		},
+		{
+			name:          "invalid levels map",
+			confJSON:      `{"levels":{"*":"INVALID"}}`,
+			expectedError: "invalid log level 'INVALID': slog: level string \"INVALID\": unknown name",
+		},
+		{
+			name:          "invalid levels type",
+			confJSON:      `{"levels":1}`,
+			expectedError: "invalid levels value: 1",
+		},
 	}
 
 	for _, test := range tests {
@@ -197,10 +254,11 @@ func TestConfig_Configure(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 
 	tests := []struct {
-		name     string
-		conf     Config
-		logFn    func(*testing.T, *slog.Logger, *Controller)
-		assertFn func(*testing.T, *bytes.Buffer)
+		name      string
+		conf      Config
+		logFn     func(*testing.T, *slog.Logger, *Controller)
+		assertFn  func(*testing.T, *bytes.Buffer)
+		wantError string
 	}{
 		{
 			name: "defaults",
@@ -278,6 +336,55 @@ func TestConfig_Configure(t *testing.T) {
 				mapstest.AssertContains(t, json.RawMessage(buf.Bytes()), map[string]any{"msg": "cya", LoggerKey: "blue"}, "blue logger should log info level, was %v", buf.String())
 			},
 		},
+		{
+			name: "should replace levels",
+			conf: Config{
+				DefaultSink:  TextSink,
+				DefaultLevel: slog.LevelWarn,
+				Levels:       Levels{"blue": slog.LevelInfo},
+			},
+			logFn: func(t *testing.T, _ *slog.Logger, c *Controller) {
+				blue, red, white := c.Logger("blue"), c.Logger("red"), c.Logger("white")
+				blue.Info("hiblue")
+				red.Info("hired")
+				white.Info("hiwhite")
+				assert.Contains(t, buf.String(), "msg=hiblue")
+				assert.NotContains(t, buf.String(), "msg=hired")
+				assert.NotContains(t, buf.String(), "msg=hiwhite")
+
+				buf.Reset()
+				Config{DefaultSink: TextSink, DefaultLevel: slog.LevelWarn, Levels: Levels{"red": slog.LevelInfo}, Out: buf}.Configure(c)
+				blue.Info("hiblue")
+				red.Info("hired")
+				white.Info("hiwhite")
+				assert.NotContains(t, buf.String(), "msg=hiblue")
+				assert.Contains(t, buf.String(), "msg=hired")
+				assert.NotContains(t, buf.String(), "msg=hiwhite")
+
+				buf.Reset()
+				Config{DefaultSink: TextSink, DefaultLevel: slog.LevelWarn, Out: buf}.Configure(c)
+				blue.Info("hiblue")
+				red.Info("hired")
+				white.Info("hiwhite")
+				assert.Empty(t, buf.String())
+
+				buf.Reset()
+				Config{DefaultSink: TextSink, DefaultLevel: slog.LevelInfo, Out: buf}.Configure(c)
+				blue.Info("hiblue")
+				red.Info("hired")
+				white.Info("hiwhite")
+				assert.Contains(t, buf.String(), "msg=hiblue")
+				assert.Contains(t, buf.String(), "msg=hired")
+				assert.Contains(t, buf.String(), "msg=hiwhite")
+			},
+		},
+		{
+			name: "invalid sink",
+			conf: Config{
+				DefaultSink: "INVALID",
+			},
+			wantError: "unknown sink constructor: INVALID",
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -287,6 +394,11 @@ func TestConfig_Configure(t *testing.T) {
 			ctl := NewController(nil)
 
 			err := test.conf.Configure(ctl)
+			if test.wantError != "" {
+				require.ErrorContains(t, err, test.wantError)
+				return
+			}
+
 			require.NoError(t, err)
 
 			l := ctl.Logger("")
@@ -351,11 +463,12 @@ func TestLevelsMarshaling(t *testing.T) {
 	}
 }
 
-func TestLevelsUnmarshaling(t *testing.T) {
+func TestLevels_UnmarshalText(t *testing.T) {
 	tests := []struct {
-		name     string
-		text     string
-		expected Levels
+		name      string
+		text      string
+		expected  Levels
+		wantError string
 	}{
 		{
 			name:     "empty",
@@ -384,12 +497,22 @@ func TestLevelsUnmarshaling(t *testing.T) {
 				"off":         math.MaxInt,
 			},
 		},
+		{
+			name:      "invalid level",
+			text:      "invalid=INVALID",
+			wantError: "invalid log level 'INVALID': slog: level string \"INVALID\": unknown name",
+		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			var levels Levels
 			err := levels.UnmarshalText([]byte(test.text))
+			if test.wantError != "" {
+				require.ErrorContains(t, err, test.wantError)
+				return
+			}
+
 			require.NoError(t, err)
 
 			assert.Equal(t, test.expected, levels)
@@ -589,6 +712,116 @@ func TestMustConfigFromEnv(t *testing.T) {
 
 			MustConfigFromEnv(tC.envvars...)
 			assert.Equal(t, tC.expectedLevel, Default().DefaultLevel())
+		})
+	}
+}
+func TestRegisterSinkConstructor(t *testing.T) {
+	tests := []struct {
+		name            string
+		constructorName string
+		constructor     SinkConstructor
+		want            string
+		wantPanic       bool
+		wantError       string
+	}{
+		{
+			name: "register constructor",
+			constructor: func(c Config) (slog.Handler, error) {
+				return slog.NewTextHandler(c.Out, nil).WithAttrs([]slog.Attr{slog.String("test", "test")}), nil
+			},
+			want:            "test=test",
+			constructorName: "blue",
+		},
+		{
+			name:            "register nil constructor should panic",
+			wantPanic:       true,
+			constructorName: "blue",
+		},
+		{
+			name:            "register constructor with empty name",
+			constructorName: "",
+			constructor:     func(_ Config) (slog.Handler, error) { return noop, nil },
+			wantPanic:       true,
+		},
+		{
+			name:            "re-register constructor",
+			constructorName: TextSink,
+			constructor: func(c Config) (slog.Handler, error) {
+				return slog.NewTextHandler(c.Out, nil).WithAttrs([]slog.Attr{slog.String("test", "test")}), nil
+			},
+			want: "test=test",
+		},
+		{
+			name:            "register a constructor which returns an error",
+			constructorName: "blue",
+			constructor: func(_ Config) (slog.Handler, error) {
+				return nil, errors.New("test error")
+			},
+			wantError: "test error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// first, reset the sink constructors map
+			resetBuiltInSinks()
+
+			if tt.wantPanic {
+				assert.Panics(t, func() {
+					RegisterSinkConstructor(tt.constructorName, tt.constructor)
+				})
+				return
+			}
+
+			RegisterSinkConstructor(tt.constructorName, tt.constructor)
+
+			// Verify the constructor was registered by configuring a sink
+			var buf bytes.Buffer
+			conf := Config{
+				DefaultSink: tt.constructorName,
+				Out:         &buf,
+			}
+			ctl := NewController(nil)
+			err := conf.Configure(ctl)
+			if tt.wantError != "" {
+				assert.ErrorContains(t, err, tt.wantError)
+				return
+			}
+			require.NoError(t, err)
+
+			// Test the configured sink works
+			logger := ctl.Logger("")
+			logger.Info("test message")
+			if tt.want != "" {
+				assert.Contains(t, buf.String(), tt.want)
+			} else {
+				assert.Empty(t, buf.String())
+			}
+		})
+	}
+
+	builtIns := map[string]string{
+		TermSink:      "> test message\n",
+		TermColorSink: "\x1b[0m \x1b[36m> \x1b[0m\x1b[1mtest message\x1b[0m\n",
+		TextSink:      "level=INFO msg=\"test message\" logger=blue\n",
+		JSONSink:      `{"level":"INFO","msg":"test message","logger":"blue"}` + "\n",
+		ConsoleSink:   "level=INFO msg=\"test message\" logger=blue\n",
+	}
+	for name, want := range builtIns {
+		t.Run("builtin "+name, func(t *testing.T) {
+			var buf bytes.Buffer
+			conf := Config{
+				DefaultSink:  name,
+				Out:          &buf,
+				ReplaceAttrs: []func([]string, slog.Attr) slog.Attr{removeKeys(slog.TimeKey)},
+			}
+			ctl := NewController(nil)
+			err := conf.Configure(ctl)
+			require.NoError(t, err)
+
+			logger := ctl.Logger("blue")
+			logger.Info("test message")
+			assert.Contains(t, buf.String(), want)
 		})
 	}
 }

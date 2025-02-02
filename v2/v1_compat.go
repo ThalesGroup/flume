@@ -162,7 +162,7 @@ func applyReplaceAttrs(groups []string, a slog.Attr, fns []func([]string, slog.A
 		a.Value = a.Value.Resolve()
 		if a.Value.Kind() == slog.KindGroup {
 			// ReplaceAttr is only run on non-group attrs.  We can stop.
-			// The handler will take care of call us again on the members.
+			// The handler will take care of calling us again on the members.
 			return a
 		}
 	}
@@ -315,41 +315,6 @@ func (h *replaceAttrsMiddleware) applyReplaceAttr(groups []string, attrs []slog.
 	}
 	return newAttrs
 }
-
-// func er(_ []string, a slog.Attr) slog.Attr {
-// 	if err, ok := asError(a.Value); ok {
-// 		a.Value = slog.StringValue(fmt.Sprintf("%+v", err))
-// 	}
-// 	return a
-// }
-
-// logger name is logged with attribute "name"
-// l.Info("msg", err) => error:boom	errorVerbose:boom\n\n...
-// l.Info("msg", "err", err) => err:boom\n\n...
-// l.Info("msg", "blue") => _:blue
-
-// func ErrorDetails() func(slog.Handler) slog.Handler {
-// 	return NewMiddleware(func(ctx context.Context, record slog.Record, next slog.Handler) error {
-// 		record.Attrs(func(attr slog.Attr) bool {
-// 			attr.Value = resolve(attr.Value)
-//
-//
-//
-// 			if attr.Key != badKey {
-// 				return false
-// 			}
-//
-// 			v := attr.
-//
-// 			if err := attr.Value.Resolve().Any()
-// 			if attr.Key == badKey && attr.Value.Resolve().
-//
-//
-// 			// stop immediately, we only care about the first attr
-// 			return false
-// 		})
-// 	})
-// }
 
 type Middleware interface {
 	Apply(slog.Handler) slog.Handler

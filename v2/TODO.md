@@ -36,7 +36,7 @@
         *can* do this if they wish, by first setting a new default sink, then setting slog's default handler, but that there are caveats.
       - or should v2 act like v1 and not log anything until it has been configured?  Should there be an option to buffer until a configuration
         has been set, so logs won't be lost?
-- [ ] When using Config to set all the levels, does that clear any prior level settings?  Is there generally a way to clear/reset
+- [x] When using Config to set all the levels, does that clear any prior level settings?  Is there generally a way to clear/reset
       all confs?
 - [ ] Should there be a bridge from v1 to v2?  Add a way to direct all v1 calls to v2 calls?
   - Working on a slog handler -> zap core bridge, and a zap core -> slog handler bridge

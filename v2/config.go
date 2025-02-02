@@ -27,7 +27,12 @@ const (
 	TermColorSink = "term-color"
 )
 
-func init() {
+func init() { //nolint:gochecknoinits
+	resetBuiltInSinks()
+}
+
+func resetBuiltInSinks() {
+	sinkConstructors = sync.Map{}
 	RegisterSinkConstructor(TextSink, textSinkConstructor)
 	// for v1 compatibility, "console" is an alias for "text"
 	RegisterSinkConstructor(ConsoleSink, textSinkConstructor)
@@ -37,6 +42,12 @@ func init() {
 }
 
 func RegisterSinkConstructor(name string, constructor SinkConstructor) {
+	if constructor == nil {
+		panic(fmt.Sprintf("constructor for sink %q is nil", name))
+	}
+	if name == "" {
+		panic("constructor registered with empty name")
+	}
 	sinkConstructors.Store(name, constructor)
 }
 
@@ -144,16 +155,9 @@ type Config struct {
 	ReplaceAttrs []func([]string, slog.Attr) slog.Attr
 }
 
-const (
-	EncodingJSON      = "json"
-	EncodingText      = "text"
-	EncodingTerm      = "term"
-	EncodingTermColor = "term-color"
-)
-
 func DevDefaults() Config {
 	return Config{
-		DefaultSink: "term-color",
+		DefaultSink: TermColorSink,
 		AddSource:   true,
 	}
 }
@@ -181,9 +185,10 @@ func parseLevel(v any) (slog.Level, error) {
 	case string:
 		s = v
 	case float64:
-		// allow raw integer values for level
+		// allow numbers to be used as level values
 		return slog.Level(v), nil
 	case int:
+		// allow raw integer values for level
 		return slog.Level(v), nil
 	case bool:
 		if v {
@@ -290,7 +295,7 @@ func (c *Config) UnmarshalJSON(bytes []byte) error {
 			}
 		}
 	default:
-		return merry.Errorf("invalid level value: %v", s.Levels)
+		return merry.Errorf("invalid levels value: %v", s.Levels)
 	}
 
 	// for backward compat with v1, allow "addCaller" as
@@ -339,16 +344,27 @@ func (c Config) Handler() (slog.Handler, error) {
 	if !ok {
 		return nil, errors.New("unknown sink constructor: " + c.DefaultSink)
 	}
-	constructor := v.(SinkConstructor)
+	constructor, _ := v.(SinkConstructor)
 	return constructor(c)
 }
 
+// Controller returns a new controller configured with the given config.
+func (c Config) Controller() (*Controller, error) {
+	ctl := NewController(nil)
+	err := c.Configure(ctl)
+	if err != nil {
+		return nil, err
+	}
+	return ctl, nil
+}
+
+// Configure configures a controller with the given config.
+//
+// It sets the default level, levels, and sink.  Level settings
+// replace any current level settings.
 func (c Config) Configure(ctl *Controller) error {
 	ctl.SetDefaultLevel(c.DefaultLevel)
-
-	for name, level := range c.Levels {
-		ctl.SetLevel(name, level)
-	}
+	ctl.SetLevels(c.Levels, true)
 
 	h, err := c.Handler()
 	if err != nil {

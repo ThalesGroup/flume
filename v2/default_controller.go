@@ -50,7 +50,7 @@ var defaultFactory atomic.Pointer[Controller]
 
 //nolint:gochecknoinits
 func init() {
-	defaultFactory.Store(NewController(slog.Default().Handler()))
+	SetDefault(nil)
 }
 
 // Default returns the default flume.Controller.  It will never be
