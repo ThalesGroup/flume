@@ -52,6 +52,8 @@ linters:
     - godox
     - recvcheck          # good idea, but can't get it to ignore UnmarshalXXX functions
     - paralleltest       # noisy, and false "Range statement for test TestXXX does not reinitialise the variable..." errors in non-parallel tests
+    - tenv               # replaced by usetesting
+    - intrange           # not applicable to go1.21 (starts with go1.22)
 issues:
   # List of regexps of issue texts to exclude, empty list by default.
   # But independently from this option we use default exclude patterns,

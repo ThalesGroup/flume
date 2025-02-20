@@ -801,8 +801,8 @@ func TestRegisterSinkConstructor(t *testing.T) {
 	}
 
 	builtIns := map[string]string{
-		TermSink:      "> test message\n",
-		TermColorSink: "\x1b[0m \x1b[36m> \x1b[0m\x1b[1mtest message\x1b[0m\n",
+		TermSink:      "| test message\n",
+		TermColorSink: "\x1b[0m \x1b[1;90m|\x1b[0m \x1b[1mtest message\x1b[0m\n",
 		TextSink:      "level=INFO msg=\"test message\" logger=blue\n",
 		JSONSink:      `{"level":"INFO","msg":"test message","logger":"blue"}` + "\n",
 		ConsoleSink:   "level=INFO msg=\"test message\" logger=blue\n",

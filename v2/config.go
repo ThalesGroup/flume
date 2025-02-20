@@ -70,13 +70,13 @@ func jsonSinkConstructor(c Config) (slog.Handler, error) {
 func termSinkConstructor(color bool) SinkConstructor {
 	return func(c Config) (slog.Handler, error) {
 		return console.NewHandler(c.Out, &console.HandlerOptions{
-			NoColor:     !color,
-			AddSource:   c.AddSource,
-			Theme:       console.NewDefaultTheme(),
-			ReplaceAttr: ChainReplaceAttrs(c.ReplaceAttrs...),
-			TimeFormat:  "15:04:05.000",
-			Headers:     []string{LoggerKey},
-			HeaderWidth: 13,
+			NoColor:            !color,
+			AddSource:          c.AddSource,
+			Theme:              console.NewDefaultTheme(),
+			ReplaceAttr:        ChainReplaceAttrs(c.ReplaceAttrs...),
+			TimeFormat:         "15:04:05.000",
+			HeaderFormat:       "%t %[logger]12h %l | %m",
+			TruncateSourcePath: 2,
 		}), nil
 	}
 }
@@ -140,7 +140,7 @@ type Config struct {
 	// otherwise configured by Levels.  Defaults to Info.
 	DefaultLevel slog.Level `json:"defaultLevel,omitempty"`
 	// Encoding sets the logger's encoding. Valid values are "json",
-	// "text", "ltsv", "term", and "term-color".
+	// "text", "term", and "term-color".
 	//
 	// For compatibility with flume v1, "console" is also accepted, and
 	// is an alias for "text"

@@ -195,10 +195,6 @@ func (c *Controller) SetLevel(name string, l slog.Level) {
 
 	c.defaultLevel = l
 
-	// iterating over all handlers, inside a mutex, is slow, and made slower still
-	// by each handler locking its own mutex.  But setting levels happens very rarely,
-	// while reading the handler's level happens each time a log function is called.  So
-	// we optimize for that path, which requires only a single atomic load.
 	for _, h := range c.confs {
 		h.setLevel(l, true, false)
 	}

@@ -267,6 +267,22 @@ func TestHandlers(t *testing.T) {
 				return h2
 			},
 		},
+		{
+			name: "group attr",
+			want: "level=INFO msg=hi logger=h1 birds.color=red birds.address=mockingbird\n",
+			args: []any{slog.Group("birds", slog.String("color", "red"), slog.String("address", "mockingbird"))},
+			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
+				return NewController(slog.NewTextHandler(buf, opts)).Handler("h1")
+			},
+		},
+		{
+			name: "array attr",
+			want: "level=INFO msg=hi logger=h1 colors=\"[red blue]\"\n",
+			args: []any{"colors", []string{"red", "blue"}},
+			handlerFn: func(_ *testing.T, buf *bytes.Buffer, opts *slog.HandlerOptions) slog.Handler {
+				return NewController(slog.NewTextHandler(buf, opts)).Handler("h1")
+			},
+		},
 	}
 
 	for _, test := range tests {
