@@ -94,6 +94,7 @@ func SimpleTime() func([]string, slog.Attr) slog.Attr {
 
 type detailedJSONError struct {
 	error
+	fmt.Formatter
 }
 
 func (e detailedJSONError) MarshalJSON() ([]byte, error) {
@@ -117,9 +118,9 @@ func DetailedErrors(_ []string, a slog.Attr) slog.Attr {
 	}
 
 	if err, ok := a.Value.Any().(error); ok {
-		if _, ok = err.(fmt.Formatter); ok {
+		if formatter, ok := err.(fmt.Formatter); ok {
 			if _, ok = err.(json.Marshaler); !ok {
-				a.Value = slog.AnyValue(detailedJSONError{err})
+				a.Value = slog.AnyValue(detailedJSONError{err, formatter})
 			}
 		}
 	}

@@ -27,7 +27,7 @@
 - [ ] flumetest, and could this be replaced by https://github.com/neilotoole/slogt/blob/master/slogt.go
 - [ ] LoggerWriter, could this be replaced by an off the shelf sink?
 - [x] Make the "logger" key name configurable
-- [ ] What happens when using flume with no configuration, by default?  Should it act like slog, and forward to the legacy log package?
+- [x] What happens when using flume with no configuration, by default?  Should it act like slog, and forward to the legacy log package?  Or should it discard, like flume v1?
       - for now, it forwards to the slog default handler, which in turn forwards to the legacy log package.  I considered adding
         a function which reverses that flow, by setting slog.SetDefault() to a flume handler...but that gets really wierd.  slog's
         package level functions, like With(), don't make much sense, since setting the slog default handler *after* calling
@@ -38,9 +38,8 @@
         has been set, so logs won't be lost?
 - [x] When using Config to set all the levels, does that clear any prior level settings?  Is there generally a way to clear/reset
       all confs?
-- [ ] Should there be a bridge from v1 to v2?  Add a way to direct all v1 calls to v2 calls?
+- [x] Should there be a bridge from v1 to v2?  Add a way to direct all v1 calls to v2 calls?
   - Working on a slog handler -> zap core bridge, and a zap core -> slog handler bridge
-- [ ] A gofix style tool to migrate a codebase from v1 to v2, and migrating from Log() to LogCtx() calls?
 - [x] I think the states need to be re-organized back into a parent-child graph, and sinks need to trickle down that tree.  Creating all the handlers and states in conf isn't working the way it was intended.  Rebuilding the leaf handlers is grouping the cached attrs wrong (need tests to verify this), and is also inefficient, since it creates inefficient calls to the sink's WithAttrs()
 - [x] Add a middleware which supports ReplaceAttr.  Could be used to add ReplaceAttr support to Handlers which don't natively support it
   - [x] We could then promote ReplaceAttr support to the root of Config.  If the selected handler natively supports ReplaceAttr, great, otherwise we can add the middleware.  To support this, change the way handlers are registered with Config, so that each registration provides a factory method for building the handler, which can take the Config object, and adapt it to the native options that handler supports.
