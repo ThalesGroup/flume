@@ -8,6 +8,26 @@ on:
   workflow_dispatch:
 
 jobs:
+  lint-v1:
+    name: Lint v1
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-go@v5
+      with:
+        go-version: stable
+    - uses: golangci/golangci-lint-action@v6
+  lint-v2:
+    name: Lint v2
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-go@v5
+      with:
+        go-version: stable
+    - uses: golangci/golangci-lint-action@v6
+      with:
+        working-directory: v2
   build-v2:
     name: Build v2
     runs-on: ubuntu-latest
@@ -23,7 +43,7 @@ jobs:
     - name: Build
       working-directory: v2
       run: |
-        just build lint test
+        just build test
       env:
         GOPATH: /home/runner/work/go
   build-v1:
@@ -38,12 +58,5 @@ jobs:
         go-version: ${{ matrix.go }}
     - uses: actions/checkout@v4
     - name: Build
-      run: |
-        mkdir -p $GOPATH/bin
-        echo 'export PATH=$PATH:$GOPATH/bin' > runme.sh
-        echo 'make tools build lint test' >> runme.sh
-        chmod +x runme.sh
-        ./runme.sh
-      env:
-        GOPATH: /home/runner/work/go
+      run: make build test
 
