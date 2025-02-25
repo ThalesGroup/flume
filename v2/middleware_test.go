@@ -3,14 +3,12 @@ package flume
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"testing"
 	"time"
 
-	"github.com/ansel1/merry/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -431,6 +429,22 @@ func TestChainReplaceAttrs(t *testing.T) {
 	}
 }
 
+type detailError struct {
+	msg    string
+	detail string
+}
+
+func (d *detailError) Error() string {
+	return d.msg
+}
+
+func (d *detailError) Format(s fmt.State, _ rune) {
+	_, _ = fmt.Fprint(s, d.msg)
+	if s.Flag('+') {
+		_, _ = fmt.Fprint(s, d.detail)
+	}
+}
+
 func TestDetailedErrors(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 	opts := &HandlerOptions{
@@ -443,15 +457,13 @@ func TestDetailedErrors(t *testing.T) {
 	}
 	h := NewHandler(buf, opts)
 
-	boom := merry.New("boom")
+	boom := &detailError{msg: "boom", detail: "it exploded"}
 	rec := slog.NewRecord(time.Time{}, slog.LevelInfo, "an error", 0)
 	rec.Add("error", boom)
 	err := h.Handle(context.Background(), rec)
 	require.NoError(t, err)
 
-	marshaledErr, merr := json.Marshal(fmt.Sprintf("%+v", boom))
-	require.NoError(t, merr)
-	assert.JSONEq(t, fmt.Sprintf(`{"level":"INFO","msg":"an error","error":%v}`, string(marshaledErr)), buf.String())
+	assert.JSONEq(t, `{"level":"INFO","msg":"an error","error":"boomit exploded"}`, buf.String())
 
 	// make sure text renders the same way
 	buf.Reset()
@@ -464,7 +476,7 @@ func TestDetailedErrors(t *testing.T) {
 	rec.Add("error", boom)
 	err = h.Handle(context.Background(), rec)
 	require.NoError(t, err)
-	assert.Equal(t, "level=INFO msg=\"an error\" error="+string(marshaledErr)+"\n", buf.String())
+	assert.Equal(t, "level=INFO msg=\"an error\" error=\"boomit exploded\"\n", buf.String())
 }
 
 func TestReplaceAttrs_Enabled(t *testing.T) {

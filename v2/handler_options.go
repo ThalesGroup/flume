@@ -3,14 +3,19 @@ package flume
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"maps"
 	"slices"
 	"strconv"
 	"strings"
+)
 
-	"github.com/ansel1/merry/v2"
+// Define static error variables
+var (
+	ErrInvalidLevelsValue = errors.New("invalid levels value")
+	ErrInvalidLevelType   = errors.New("levels must be a string or int value")
 )
 
 type HandlerOptions struct {
@@ -62,7 +67,7 @@ func (o *HandlerOptions) UnmarshalJSON(bytes []byte) error {
 	}{}
 
 	if err := json.Unmarshal(bytes, &s); err != nil {
-		return merry.Prependf(err, "invalid json config")
+		return fmt.Errorf("invalid json config: %w", err)
 	}
 
 	opts := HandlerOptions{}
@@ -99,7 +104,7 @@ func (o *HandlerOptions) UnmarshalJSON(bytes []byte) error {
 			}
 		}
 	default:
-		return merry.Errorf("invalid levels value: %v", s.Levels)
+		return fmt.Errorf("%w: %v", ErrInvalidLevelsValue, s.Levels)
 	}
 
 	// for backward compat with v1, allow "addCaller" as
@@ -161,7 +166,7 @@ func parseLevel(v any) (slog.Level, error) {
 		}
 		return LevelOff, nil
 	default:
-		return 0, errors.New("levels must be a string or int value")
+		return 0, ErrInvalidLevelType
 	}
 
 	// allow raw integer values for level
@@ -193,8 +198,10 @@ func parseLevel(v any) (slog.Level, error) {
 
 	var l slog.Level
 	err := l.UnmarshalText([]byte(s))
-
-	return l, merry.Prependf(err, "invalid log level '%v'", v)
+	if err != nil {
+		return 0, fmt.Errorf("invalid log level '%v': %w", v, err)
+	}
+	return l, nil
 }
 
 type Levels map[string]slog.Leveler
@@ -255,5 +262,8 @@ func parseLevels(s string) (map[string]slog.Leveler, error) {
 			errs = errors.Join(errs, err)
 		}
 	}
-	return m, merry.Prepend(errs, "invalid log levels")
+	if errs != nil {
+		return nil, fmt.Errorf("invalid log levels: %w", errs)
+	}
+	return m, nil
 }

@@ -12,7 +12,6 @@ linters-settings:
     # ignoreInterfaceRegexps:
     #   - 
     ignorePackageGlobs:
-      - github.com/ansel1/merry/*
       - log/slog*
 
   exhaustive:
@@ -59,10 +58,6 @@ issues:
   # But independently from this option we use default exclude patterns,
   # it can be disabled by `exclude-use-default: false`. To list all
   # excluded by default patterns execute `golangci-lint run --help`
-  exclude:
-  - Error return value of .(.*\.Write). is not checked
-  # we use merry errors a lot, and goerr113 doesn't recognize it as a valid sentinel error
-  - use wrapped static errors instead
 
   # Excluding configuration per-path, per-linter, per-text and per-source
   exclude-rules:

@@ -137,7 +137,7 @@ func TestHandler(t *testing.T) {
 	}
 }
 
-func TestHandlerOpts_HandlerFn(t *testing.T) {
+func TestHandlerOptions_HandlerFn(t *testing.T) {
 	// buf := bytes.NewBuffer(nil)
 	// redSink := slog.NewTextHandler(buf, nil).WithAttrs([]slog.Attr{slog.String("sink", "red")})
 	// blueSink := slog.NewTextHandler(buf, nil).WithAttrs([]slog.Attr{slog.String("sink", "blue")})
@@ -194,7 +194,7 @@ func TestHandlerOpts_HandlerFn(t *testing.T) {
 	}
 }
 
-func TestHandlerOpts_Levels(t *testing.T) {
+func TestHandlerOptions_Levels(t *testing.T) {
 	levels := []slog.Level{
 		slog.LevelDebug,
 		slog.LevelInfo,
@@ -239,7 +239,7 @@ func TestHandlerOpts_Levels(t *testing.T) {
 	}
 }
 
-func TestHandlerOpts_AddSource(t *testing.T) {
+func TestHandlerOptions_AddSource(t *testing.T) {
 	pc, file, line, _ := runtime.Caller(0)
 	sourceField := fmt.Sprintf("%s:%d", file, line)
 
@@ -260,7 +260,7 @@ func TestHandlerOpts_AddSource(t *testing.T) {
 	assert.Equal(t, "level=INFO msg=hi\n", buf.String())
 }
 
-func TestHandlerOpts_ReplaceAttrs(t *testing.T) {
+func TestHandlerOptions_ReplaceAttrs(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 	h := NewHandler(buf, &HandlerOptions{
 		ReplaceAttrs: []func(groups []string, a slog.Attr) slog.Attr{
@@ -297,7 +297,7 @@ func TestHandlerOpts_ReplaceAttrs(t *testing.T) {
 	assert.Equal(t, "level=INFO msg=hi color=yellow size=small\n", buf.String())
 }
 
-func TestHandlerOpts_Middleware(t *testing.T) {
+func TestHandlerOptions_Middleware(t *testing.T) {
 	addAttrMW := func(attr slog.Attr) Middleware {
 		return HandlerMiddlewareFunc(func(ctx context.Context, record slog.Record, next slog.Handler) error {
 			record.AddAttrs(attr)
@@ -312,6 +312,72 @@ func TestHandlerOpts_Middleware(t *testing.T) {
 	rec := slog.NewRecord(time.Time{}, slog.LevelInfo, "hi", 0)
 	h.Handle(context.Background(), rec)
 	assert.Equal(t, "level=INFO msg=hi color=red\n", buf.String())
+}
+func TestHandlerOptions_Clone(t *testing.T) {
+	testCases := []struct {
+		name string
+		opts *HandlerOptions
+	}{
+		{
+			name: "non-nil",
+			opts: &HandlerOptions{
+				Level: slog.LevelInfo,
+				Levels: map[string]slog.Leveler{
+					"foo": slog.LevelWarn,
+				},
+				AddSource: true,
+				ReplaceAttrs: []func(groups []string, a slog.Attr) slog.Attr{
+					func(_ []string, a slog.Attr) slog.Attr {
+						return a
+					},
+				},
+				Middleware: []Middleware{
+					HandlerMiddlewareFunc(func(ctx context.Context, record slog.Record, next slog.Handler) error {
+						return next.Handle(ctx, record)
+					}),
+				},
+				HandlerFn: func(_ string, w io.Writer, opts *slog.HandlerOptions) slog.Handler {
+					return slog.NewTextHandler(w, opts)
+				},
+			},
+		},
+		{
+			name: "nil",
+			opts: nil,
+		},
+	}
+
+	for _, tC := range testCases {
+		t.Run(tC.name, func(t *testing.T) {
+			clone := tC.opts.Clone()
+			if tC.opts == nil {
+				assert.Nil(t, clone)
+				return
+			}
+			assertHandlerOptionsEqual(t, *clone, *tC.opts, "")
+
+			// modify original and verify clone is not modified
+			tC.opts.Level = slog.LevelDebug
+			tC.opts.Levels["bar"] = slog.LevelError
+			tC.opts.AddSource = false
+			tC.opts.ReplaceAttrs = append(tC.opts.ReplaceAttrs, func(_ []string, _ slog.Attr) slog.Attr {
+				return slog.Attr{}
+			})
+			tC.opts.Middleware = append(tC.opts.Middleware, HandlerMiddlewareFunc(func(_ context.Context, _ slog.Record, _ slog.Handler) error {
+				return nil
+			}))
+			tC.opts.HandlerFn = nil
+
+			assert.Equal(t, slog.LevelInfo, clone.Level)
+			assert.Equal(t, map[string]slog.Leveler{
+				"foo": slog.LevelWarn,
+			}, clone.Levels)
+			assert.True(t, clone.AddSource)
+			assert.Len(t, clone.ReplaceAttrs, 1)
+			assert.Len(t, clone.Middleware, 1)
+			assert.NotNil(t, clone.HandlerFn)
+		})
+	}
 }
 
 func TestNoopHandler(t *testing.T) {
@@ -376,4 +442,14 @@ func (ht handlerTest) Run(t *testing.T) {
 	}
 
 	assert.Equal(t, ht.want, buf.String())
+}
+
+func TestHandler_Out(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	h := NewHandler(buf, nil)
+	assert.Equal(t, buf, h.Out())
+
+	buf2 := bytes.NewBuffer(nil)
+	h.SetOut(buf2)
+	assert.Equal(t, buf2, h.Out())
 }

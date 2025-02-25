@@ -228,9 +228,6 @@ func (s *innerHandler) delegate() slog.Handler {
 	for _, transformer := range s.transformers {
 		delegate = transformer(delegate)
 	}
-	if delegate == nil {
-		delegate = noop
-	}
 	s.memoPrt.Store(&[2]*slog.Handler{base, &delegate})
 	return delegate
 }
