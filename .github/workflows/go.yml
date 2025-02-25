@@ -8,33 +8,34 @@ on:
   workflow_dispatch:
 
 jobs:
-
-  build:
-    name: Build
+  build-v2:
+    name: Build v2
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: [ '^1.21', 'oldstable', 'stable' ]
+    steps:
+    - uses: extractions/setup-just@v1
+    - uses: actions/setup-go@v5
+      with:
+        go-version: ${{ matrix.go }}
+    - uses: actions/checkout@v4
+    - name: Build
+      run: |
+        just
+      env:
+        GOPATH: /home/runner/work/go
+  build-v1:
+    name: Build v1
     runs-on: ubuntu-latest
     strategy:
       matrix:
         go: [ '^1.14', 'oldstable', 'stable' ]
     steps:
-    - name: Set up Go 1.x
-      uses: actions/setup-go@v3
+    - uses: actions/setup-go@v5
       with:
         go-version: ${{ matrix.go }}
-      id: go
-
-    - name: Check out code into the Go module directory
-      uses: actions/checkout@v2
-
-    - name: Debug
-      run: |
-        pwd
-        echo ${HOME}
-        echo ${GITHUB_WORKSPACE}
-        echo ${GOPATH}
-        echo ${GOROOT}
-      env:
-        GOPATH: /home/runner/work/go
-
+    - uses: actions/checkout@v4
     - name: Build
       run: |
         mkdir -p $GOPATH/bin
