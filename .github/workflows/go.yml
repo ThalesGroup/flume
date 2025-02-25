@@ -21,8 +21,9 @@ jobs:
         go-version: ${{ matrix.go }}
     - uses: actions/checkout@v4
     - name: Build
+      working-directory: v2
       run: |
-        just
+        just build lint test
       env:
         GOPATH: /home/runner/work/go
   build-v1:
@@ -40,7 +41,7 @@ jobs:
       run: |
         mkdir -p $GOPATH/bin
         echo 'export PATH=$PATH:$GOPATH/bin' > runme.sh
-        echo 'make tools all' >> runme.sh
+        echo 'make tools build lint test' >> runme.sh
         chmod +x runme.sh
         ./runme.sh
       env:

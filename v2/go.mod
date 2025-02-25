@@ -5,7 +5,7 @@ go 1.21
 toolchain go1.23.4
 
 require (
-	github.com/ansel1/console-slog v0.4.2
+	github.com/ansel1/console-slog v0.5.0
 	github.com/stretchr/testify v1.9.0
 )
 
