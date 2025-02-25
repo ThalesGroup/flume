@@ -1,10 +1,14 @@
 package flume
 
 import (
+	"bytes"
 	"errors"
+	"testing"
+	"time"
+
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
-	"testing"
+	"go.uber.org/zap/zapcore"
 )
 
 func TestSweetenFields(t *testing.T) {
@@ -47,4 +51,48 @@ func TestCore_IsInfo(t *testing.T) {
 	assert.False(t, l.IsInfo())
 	f.SetLevel("asdf", DebugLevel)
 	assert.True(t, l.IsInfo())
+}
+func TestCore_ZapCore(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	f := NewFactory()
+	f.SetOut(buf)
+	f.SetDefaultLevel(DebugLevel)
+	f.SetAddCaller(true)
+	f.SetEncoder(zapcore.NewConsoleEncoder(zapcore.EncoderConfig{
+		MessageKey: "msg",
+		LevelKey:   "level",
+		TimeKey:    "time",
+		CallerKey:  "caller",
+		EncodeTime: func(t time.Time, pae zapcore.PrimitiveArrayEncoder) {
+			if t.IsZero() {
+				pae.AppendString("zerotime")
+			} else {
+				pae.AppendString("atime")
+			}
+		},
+		EncodeCaller: func(ec zapcore.EntryCaller, pae zapcore.PrimitiveArrayEncoder) {
+			pae.AppendString("acaller: " + ec.File)
+		},
+	}))
+
+	c := f.NewCore("test").WithArgs(zap.String("color", "red"))
+	zc := c.ZapCore()
+	assert.NotNil(t, zc)
+
+	// zc should forward its calls to the same core that underlies the flume
+	// core.  We can test this by comparing calls to zc to calls to the flume
+	// core.
+	c.Debug("debug", "letter", "d")
+	c.Info("info", "letter", "i")
+	c.Error("error", "letter", "e")
+	want := buf.String()
+	buf.Reset()
+	zl := zap.New(zc, zap.AddCaller())
+	// .With(zap.String("size", "large"))
+	zl.Debug("debug", zap.String("letter", "d"))
+	zl.Info("info", zap.String("letter", "i"))
+	zl.Error("error", zap.String("letter", "e"))
+	got := buf.String()
+	assert.Equal(t, want, got)
+
 }

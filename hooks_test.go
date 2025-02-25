@@ -15,7 +15,7 @@ var suppressErrVerboseOnInfoHook = func(entry *CheckedEntry, fields []Field) []F
 	for i := range fields {
 		if fields[i].Type == zapcore.ErrorType && entry.Level == zapcore.InfoLevel {
 			if err, ok := fields[i].Interface.(error); ok {
-				if _, ok := err.(fmt.Formatter); ok { //nolint:errorlint
+				if _, ok := err.(fmt.Formatter); ok {
 					err = errors.New(err.Error())
 					fields[i].Interface = err
 				}

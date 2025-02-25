@@ -2,13 +2,14 @@ package flume
 
 import (
 	"fmt"
-	"github.com/ansel1/merry"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"io"
 	"os"
 	"strings"
 	"sync"
+
+	"github.com/ansel1/merry"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type loggerInfo struct {
@@ -33,6 +34,8 @@ type Factory struct {
 	addCaller bool
 
 	hooks []HookFunc
+
+	newCoreFn func(name string, encoder zapcore.Encoder, out zapcore.WriteSyncer, levelEnabler zapcore.LevelEnabler) zapcore.Core
 }
 
 // Encoder serializes log entries.  Re-exported from zap for now to avoid exporting zap.
@@ -85,6 +88,16 @@ func (r *Factory) SetAddCaller(b bool) {
 	r.refreshLoggers()
 }
 
+// SetNewCoreFn sets the function that creates the inner zapcore.Cores to which flume forwards logs.
+// If not set, flume will use zapcore.NewCore.  This is mainly useful for integration with other logging
+// systems.
+func (r *Factory) SetNewCoreFn(f func(name string, encoder zapcore.Encoder, out zapcore.WriteSyncer, levelEnabler zapcore.LevelEnabler) zapcore.Core) {
+	r.Lock()
+	defer r.Unlock()
+	r.newCoreFn = f
+	r.refreshLoggers()
+}
+
 func (r *Factory) getOut() io.Writer {
 	if r.out == nil {
 		return os.Stdout
@@ -116,15 +129,17 @@ func (r *Factory) newInnerCore(name string, info *loggerInfo) *innerCore {
 	default:
 		l = r.defaultLevel
 	}
-	zc := zapcore.NewCore(
-		r.getEncoder(),
-		zapcore.AddSync(r.getOut()),
-		l,
-	)
+
+	var zcore zapcore.Core
+	if r.newCoreFn != nil {
+		zcore = r.newCoreFn(name, r.getEncoder(), zapcore.AddSync(r.getOut()), l)
+	} else {
+		zcore = zapcore.NewCore(r.getEncoder(), zapcore.AddSync(r.getOut()), l)
+	}
 
 	return &innerCore{
 		name:        name,
-		Core:        zc,
+		Core:        zcore,
 		addCaller:   r.addCaller,
 		errorOutput: zapcore.AddSync(os.Stderr),
 		hooks:       r.hooks,
