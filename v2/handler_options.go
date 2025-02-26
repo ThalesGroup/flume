@@ -70,7 +70,11 @@ func (o *HandlerOptions) UnmarshalJSON(bytes []byte) error {
 		return fmt.Errorf("invalid json config: %w", err)
 	}
 
-	opts := HandlerOptions{}
+	var opts HandlerOptions
+	if o != nil {
+		opts = *o
+	}
+
 	if s.Development {
 		opts = DevDefaults()
 	}
