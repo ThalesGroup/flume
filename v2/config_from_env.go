@@ -78,39 +78,43 @@ func UnmarshalEnv(o *HandlerOptions, envvars ...string) error {
 
 var handlerFns sync.Map
 
-func init() { //nolint:gochecknoinits
-	resetBuiltInHandlerFns()
-}
+var initHandlerFnsOnce sync.Once
 
 func resetBuiltInHandlerFns() {
 	handlerFns = sync.Map{}
 	textHandlerFn := func(_ string, w io.Writer, opts *slog.HandlerOptions) slog.Handler {
 		return slog.NewTextHandler(w, opts)
 	}
-	RegisterHandlerFn(TextHandler, textHandlerFn)
+	handlerFns.Store(TextHandler, textHandlerFn)
 	// for v1 compatibility, "console" is an alias for "text"
-	RegisterHandlerFn(ConsoleHandler, textHandlerFn)
-	RegisterHandlerFn(JSONHandler, func(_ string, w io.Writer, opts *slog.HandlerOptions) slog.Handler {
+	handlerFns.Store(ConsoleHandler, textHandlerFn)
+	handlerFns.Store(JSONHandler, func(_ string, w io.Writer, opts *slog.HandlerOptions) slog.Handler {
 		return slog.NewJSONHandler(w, opts)
 	})
-	RegisterHandlerFn(TermHandler, termHandlerFn(false))
-	RegisterHandlerFn(TermColorHandler, termHandlerFn(true))
-	RegisterHandlerFn(NoopHandler, func(_ string, _ io.Writer, _ *slog.HandlerOptions) slog.Handler {
+	handlerFns.Store(TermHandler, termHandlerFn(false))
+	handlerFns.Store(TermColorHandler, termHandlerFn(true))
+	handlerFns.Store(NoopHandler, func(_ string, _ io.Writer, _ *slog.HandlerOptions) slog.Handler {
 		return noop
 	})
 }
 
-func LookupHandlerFn(name string) HandlerFn {
+func initHandlerFns() {
+	initHandlerFnsOnce.Do(func() {
+		resetBuiltInHandlerFns()
+	})
+}
+
+func LookupHandlerFn(name string) func(string, io.Writer, *slog.HandlerOptions) slog.Handler {
+	initHandlerFns()
 	v, ok := handlerFns.Load(name)
 	if !ok {
 		return nil
 	}
-	return v.(HandlerFn) //nolint:forcetypeassert // if it's not a HandlerFn, we should panic
+	return v.(func(string, io.Writer, *slog.HandlerOptions) slog.Handler) //nolint:forcetypeassert // if it's not a HandlerFn, we should panic
 }
 
-type HandlerFn func(string, io.Writer, *slog.HandlerOptions) slog.Handler
-
-func RegisterHandlerFn(name string, fn HandlerFn) {
+func RegisterHandlerFn(name string, fn func(string, io.Writer, *slog.HandlerOptions) slog.Handler) {
+	initHandlerFns()
 	if fn == nil {
 		panic(fmt.Sprintf("constructor for sink %q is nil", name))
 	}
@@ -120,7 +124,7 @@ func RegisterHandlerFn(name string, fn HandlerFn) {
 	handlerFns.Store(name, fn)
 }
 
-func termHandlerFn(color bool) HandlerFn {
+func termHandlerFn(color bool) func(string, io.Writer, *slog.HandlerOptions) slog.Handler {
 	return func(_ string, w io.Writer, opts *slog.HandlerOptions) slog.Handler {
 		if opts == nil {
 			opts = &slog.HandlerOptions{}
@@ -131,7 +135,7 @@ func termHandlerFn(color bool) HandlerFn {
 			Theme:              console.NewDefaultTheme(),
 			ReplaceAttr:        opts.ReplaceAttr,
 			TimeFormat:         "15:04:05.000",
-			HeaderFormat:       "%t %[logger]12h %l | %m",
+			HeaderFormat:       "%t %[" + LoggerKey + "]8h %l | %m",
 			TruncateSourcePath: 2,
 		})
 	}

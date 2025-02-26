@@ -200,7 +200,7 @@ func TestRegisterHandlerFn(t *testing.T) {
 	tests := []struct {
 		name        string
 		handlerName string
-		handlerFn   HandlerFn
+		handlerFn   func(string, io.Writer, *slog.HandlerOptions) slog.Handler
 		want        string
 		wantPanic   bool
 	}{
@@ -259,8 +259,8 @@ func TestRegisterHandlerFn(t *testing.T) {
 	}
 
 	builtIns := map[string]string{
-		TermHandler:      "blue         INF | hi\n",
-		TermColorHandler: "\x1b[1;90mblue        \x1b[0m \x1b[32mINF\x1b[0m \x1b[1;90m|\x1b[0m \x1b[1mhi\x1b[0m\n",
+		TermHandler:      "blue     INF | hi\n",
+		TermColorHandler: "\x1b[1;90mblue    \x1b[0m \x1b[32mINF\x1b[0m \x1b[1;90m|\x1b[0m \x1b[1mhi\x1b[0m\n",
 		TextHandler:      "level=INFO msg=hi logger=blue\n",
 		JSONHandler:      `{"level":"INFO","msg":"hi","logger":"blue"}` + "\n",
 		ConsoleHandler:   "level=INFO msg=hi logger=blue\n",

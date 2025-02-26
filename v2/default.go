@@ -3,6 +3,7 @@ package flume
 import (
 	"log/slog"
 	"math"
+	"sync"
 )
 
 const (
@@ -29,14 +30,19 @@ func New(name string) *slog.Logger {
 	return slog.New(Default().Named(name))
 }
 
-var defaultHandler = NewHandler(nil, &HandlerOptions{
-	HandlerFn: LookupHandlerFn(NoopHandler),
-})
+var defaultHandler *Handler
+
+var initDefaultHandlerOnce sync.Once
 
 // Default returns the default Handler.  It will never be
 // nil.  By default, it is a noop handler that discards all log messages.
 //
 // The simplest way to enable logging is to call Default().SetHandlerOptions(nil)
 func Default() *Handler {
+	initDefaultHandlerOnce.Do(func() {
+		defaultHandler = NewHandler(nil, &HandlerOptions{
+			HandlerFn: LookupHandlerFn(NoopHandler),
+		})
+	})
 	return defaultHandler
 }
