@@ -235,7 +235,7 @@ func TestHandlerOptions_UnmarshalJSON(t *testing.T) {
 			name:     "dev defaults",
 			confJSON: `{"development":true}`,
 			expected: DevDefaults(),
-			want:     "             \x1b[32mINF\x1b[0m \x1b[1;90m|\x1b[0m \x1b[1mhi\x1b[0m\n",
+			want:     "         \x1b[32mINF\x1b[0m \x1b[1;90m|\x1b[0m \x1b[1mhi\x1b[0m\n",
 		},
 		{
 			name:     "int level",
