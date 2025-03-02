@@ -88,6 +88,12 @@ func (r *Factory) SetAddCaller(b bool) {
 	r.refreshLoggers()
 }
 
+func (r *Factory) AddCaller() bool {
+	r.Lock()
+	defer r.Unlock()
+	return r.addCaller
+}
+
 // SetNewCoreFn sets the function that creates the inner zapcore.Cores to which flume forwards logs.
 // If not set, flume will use zapcore.NewCore.  This is mainly useful for integration with other logging
 // systems.
