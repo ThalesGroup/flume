@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/ansel1/console-slog"
@@ -65,15 +66,31 @@ func MustConfigFromEnv(envvars ...string) {
 
 func UnmarshalEnv(o *HandlerOptions, envvars ...string) error {
 	for _, v := range envvars {
-		if configString := os.Getenv(v); configString != "" {
-			// todo: need to add a branch here to handle when the environment variable is
-			// set to a raw levels string, and isn't JSON
+		configString := os.Getenv(v)
+		if configString == "" {
+			continue
+		}
+		if strings.HasPrefix(configString, "{") {
 			err := json.Unmarshal([]byte(configString), o)
 			if err != nil {
 				return fmt.Errorf("parsing configuration from environment variable %v: %w", v, err)
 			}
 			return nil
 		}
+
+		// parse the value like a levels string
+		var levels Levels
+		err := levels.UnmarshalText([]byte(configString))
+		if err != nil {
+			return fmt.Errorf("parsing levels string from environment variable %v: %w", v, err)
+		}
+		opts := HandlerOptions{}
+		if defLvl, ok := levels["*"]; ok {
+			opts.Level = defLvl
+			delete(levels, "*")
+		}
+		opts.Levels = levels
+		*o = opts
 	}
 	return nil
 }

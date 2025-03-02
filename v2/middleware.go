@@ -301,8 +301,6 @@ func (h *replaceAttrsMiddleware) Enabled(ctx context.Context, level slog.Level) 
 }
 
 func (h *replaceAttrsMiddleware) Handle(ctx context.Context, record slog.Record) error {
-	// TODO: apply ReplaceAttrs to the built-in attrs as well
-
 	var replacedBuiltIns [3]slog.Attr
 	replaced := replacedBuiltIns[:0]
 

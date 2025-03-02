@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestConfig_UnmarshalEnv(t *testing.T) {
+func TestUnmarshalEnv(t *testing.T) {
 	tests := []struct {
 		name        string
 		env         map[string]string
@@ -55,10 +55,31 @@ func TestConfig_UnmarshalEnv(t *testing.T) {
 		{
 			name: "parse error",
 			env: map[string]string{
-				"FLUME": `not json`,
+				"FLUME": `{{not json}}`,
 			},
 			envvars:     DefaultConfigEnvVars,
 			expectError: "parsing configuration from environment variable FLUME: invalid character",
+		},
+		{
+			name: "levels string error",
+			env: map[string]string{
+				"FLUME": `blue=RED`,
+			},
+			envvars:     DefaultConfigEnvVars,
+			expectError: "parsing levels string from environment variable FLUME: invalid log levels: invalid log level 'RED': slog: level string \"RED\": unknown name",
+		},
+		{
+			name: "parse levels string",
+			env: map[string]string{
+				"FLUME": `*=DBG,blue=WRN`,
+			},
+			envvars: DefaultConfigEnvVars,
+			expected: HandlerOptions{
+				Level: LevelDebug,
+				Levels: map[string]slog.Leveler{
+					"blue": LevelWarn,
+				},
+			},
 		},
 	}
 
@@ -112,9 +133,9 @@ func TestConfigFromEnv(t *testing.T) {
 		{
 			name: "parse error",
 			env: map[string]string{
-				"FLUME": `not json`,
+				"FLUME": `{{not json}}`,
 			},
-			expectError: "parsing configuration from environment variable FLUME: invalid character",
+			expectError: "parsing configuration from environment variable FLUME: invalid character '{' looking for beginning of object key string",
 		},
 	}
 
@@ -131,77 +152,25 @@ func TestConfigFromEnv(t *testing.T) {
 			}
 			err := ConfigFromEnv(test.envvars...)
 			if test.expectError != "" {
-				assert.ErrorContains(t, err, test.expectError)
-				return
+				assert.Error(t, err, test.expectError) //nolint:testifylint
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, test.expectedLevel, Default().HandlerOptions().Level)
 			}
 
-			require.NoError(t, err)
-			assert.Equal(t, test.expectedLevel, Default().HandlerOptions().Level)
-		})
-	}
-}
-
-func TestMustConfigFromEnv(t *testing.T) {
-	testCases := []struct {
-		name          string
-		env           map[string]string
-		envvars       []string
-		expectedLevel slog.Leveler
-		expectPanic   string
-	}{
-		{
-			name: "default",
-			env: map[string]string{
-				"FLUME": `{"level":"WRN"}`,
-			},
-			expectedLevel: slog.LevelWarn,
-		},
-		{
-			name: "search envvars",
-			env: map[string]string{
-				"EMPTY":     "",
-				"LOGCONFIG": `{"level":"WRN"}`,
-			},
-			envvars:       []string{"EMPTY", "LOGCONFIG"},
-			expectedLevel: slog.LevelWarn,
-		},
-		{
-			name:          "no-op",
-			envvars:       []string{"EMPTY", "LOGCONFIG"},
-			expectedLevel: nil,
-		},
-		{
-			name: "parse error",
-			env: map[string]string{
-				"FLUME": `not json`,
-			},
-			expectPanic: "parsing configuration from environment variable FLUME: invalid character 'o' in literal null (expecting 'u')",
-		},
-	}
-	for _, tC := range testCases {
-		t.Run(tC.name, func(t *testing.T) {
-			// make sure the default handler is restored after the test
-			ogOpts := Default().HandlerOptions()
-			t.Cleanup(func() {
-				Default().SetHandlerOptions(ogOpts)
-			})
-
-			for k, v := range tC.env {
-				t.Setenv(k, v)
-			}
-
-			if tC.expectPanic != "" {
-				assert.PanicsWithError(t, tC.expectPanic, func() {
-					MustConfigFromEnv(tC.envvars...)
+			// also test MustConfig
+			if test.expectError != "" {
+				assert.PanicsWithError(t, test.expectError, func() {
+					MustConfigFromEnv(test.envvars...)
 				})
-				return
+			} else {
+				MustConfigFromEnv(test.envvars...)
+				assert.Equal(t, test.expectedLevel, Default().HandlerOptions().Level)
 			}
-
-			MustConfigFromEnv(tC.envvars...)
-			assert.Equal(t, tC.expectedLevel, Default().HandlerOptions().Level)
 		})
 	}
 }
+
 func TestRegisterHandlerFn(t *testing.T) {
 	tests := []struct {
 		name        string
