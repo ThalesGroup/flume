@@ -48,8 +48,8 @@ func ExampleTermHandler() {
 	l.With(LoggerKey, "server").Info("Request received", "method", "GET", "url", "/users/123")
 
 	// Output:
-	// 20:41:28.515 main     INF | Hello, World!
-	// 20:41:28.515 main     WRN | High temp temp=30
-	// 20:41:28.515 main     ERR | Failed to read file error=file not found
-	// 20:41:28.515 server   INF | Request received method=GET url=/users/123
+	// 20:41:28.515 main     |INF| Hello, World!
+	// 20:41:28.515 main     |WRN| High temp temp=30
+	// 20:41:28.515 main     |ERR| Failed to read file error=file not found
+	// 20:41:28.515 server   |INF| Request received method=GET url=/users/123
 }

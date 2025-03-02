@@ -209,6 +209,7 @@ func TestLevels_UnmarshalText(t *testing.T) {
 }
 
 func TestHandlerOptions_UnmarshalJSON(t *testing.T) {
+	theme := console.NewDefaultTheme()
 	tests := []struct {
 		name     string
 		confJSON string
@@ -234,8 +235,9 @@ func TestHandlerOptions_UnmarshalJSON(t *testing.T) {
 		{
 			name:     "dev defaults",
 			confJSON: `{"development":true}`,
-			expected: DevDefaults(),
-			want:     "         \x1b[32mINF\x1b[0m \x1b[1;90m|\x1b[0m \x1b[1mhi\x1b[0m\n",
+			expected: *DevDefaults(),
+			want: styled("|", theme.Header) + styled("INF", theme.LevelInfo) + styled("|", theme.Header) + " " +
+				styled("hi", theme.Message) + "\n",
 		},
 		{
 			name:     "int level",

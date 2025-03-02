@@ -2,10 +2,16 @@ package flume
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"log/slog"
+	"path"
+	"runtime"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/ansel1/console-slog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -257,23 +263,60 @@ func TestRegisterHandlerFn(t *testing.T) {
 			}.Run(t)
 		})
 	}
+}
 
+func TestBuiltInHandlers(t *testing.T) {
+	theme := console.NewDefaultTheme()
 	builtIns := map[string]string{
-		TermHandler:      "blue     INF | hi\n",
-		TermColorHandler: "\x1b[1;90mblue    \x1b[0m \x1b[32mINF\x1b[0m \x1b[1;90m|\x1b[0m \x1b[1mhi\x1b[0m\n",
-		TextHandler:      "level=INFO msg=hi logger=blue\n",
-		JSONHandler:      `{"level":"INFO","msg":"hi","logger":"blue"}` + "\n",
-		ConsoleHandler:   "level=INFO msg=hi logger=blue\n",
-		NoopHandler:      "",
+		TermHandler: "blue     |INF| hi\n",
+		TermColorHandler: styled("blue    ", theme.Header) + " " +
+			styled("|", theme.Header) + styled("INF", theme.LevelInfo) + styled("|", theme.Header) + " " +
+			styled("hi", theme.Message) + "\n",
+		TextHandler:    "level=INFO msg=hi logger=blue\n",
+		JSONHandler:    `{"level":"INFO","msg":"hi","logger":"blue"}` + "\n",
+		ConsoleHandler: "level=INFO msg=hi logger=blue\n",
+		NoopHandler:    "",
 	}
 	for name, want := range builtIns {
+		handlerFn := LookupHandlerFn(name)
+
 		t.Run("builtin "+name, func(t *testing.T) {
 			handlerTest{
 				want: want,
 				handlerFn: func(buf *bytes.Buffer) slog.Handler {
-					return LookupHandlerFn(name)("", buf, nil).WithAttrs([]slog.Attr{slog.String(LoggerKey, "blue")})
+					return handlerFn("", buf, nil).WithAttrs([]slog.Attr{slog.String(LoggerKey, "blue")})
 				},
 			}.Run(t)
 		})
+
+		if name == NoopHandler {
+			// noop handler doesn't honor any of the other options
+			continue
+		}
+
+		t.Run("builtin "+name+" with options", func(t *testing.T) {
+			pc, file, _, _ := runtime.Caller(0)
+			file = path.Base(file)
+
+			buf := bytes.NewBuffer(nil)
+			h := handlerFn("", buf, &slog.HandlerOptions{Level: slog.LevelWarn, AddSource: true, ReplaceAttr: replaceKey(LoggerKey, slog.String(LoggerKey, "cerulean"))})
+			h = h.WithAttrs([]slog.Attr{slog.String(LoggerKey, "blue")})
+
+			assert.True(t, h.Enabled(context.Background(), slog.LevelWarn))
+			assert.False(t, h.Enabled(context.Background(), slog.LevelInfo))
+
+			err := h.Handle(context.Background(), slog.NewRecord(time.Now(), slog.LevelWarn, "hi", pc))
+			require.NoError(t, err)
+
+			assert.Contains(t, buf.String(), "cerulean", "ReplaceAttr function should have replaced logger key")
+			assert.Contains(t, buf.String(), file, "AddSource should have been true")
+		})
 	}
+}
+
+func styled(s string, c console.ANSIMod) string {
+	if c == "" {
+		return s
+	}
+	return strings.Join([]string{string(c), s, string(console.ResetMod)}, "")
 }

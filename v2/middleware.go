@@ -56,6 +56,27 @@ import (
 // 	return err, ok
 // }
 
+// AbbreviateLevel is a ReplaceAttr function that abbreviates log level names.
+//
+// It modifies the attribute if it's a log level (slog.Level) and changes the level name to its abbreviation.
+// The abbreviations are:
+//
+//   - "DEBUG" becomes "DBG"
+//   - "INFO" becomes "INF"
+//   - "WARN" becomes "WRN"
+//   - "ERROR" becomes "ERR"
+//
+// If the attribute's value is not a slog.Level, it is returned unchanged.
+//
+// Example:
+//
+//	// Create a logger with the ReplaceAttr function.
+//	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+//		ReplaceAttr: AbbreviateLevel,
+//	}))
+//
+//	// Log a message.
+//	logger.Debug("This is a debug message.") // Output will be: level=DBG msg="This is a debug message."
 func AbbreviateLevel(_ []string, attr slog.Attr) slog.Attr {
 	if attr.Value.Kind() != slog.KindAny {
 		return attr
@@ -79,6 +100,46 @@ func AbbreviateLevel(_ []string, attr slog.Attr) slog.Attr {
 	return attr
 }
 
+// FormatTimes returns a ReplaceAttr function that formats time values according to the specified format.
+//
+// It modifies an attribute if its value is a time.Time. The time is formatted using the provided format string,
+// and the attribute's value is updated to the formatted time string.
+//
+// If the attribute's value is not a time.Time, it is returned unchanged.
+//
+// Args:
+//
+//	format string: The format string to use for formatting time values (e.g., time.DateTime, "2006-01-02", "15:04:05").
+//
+// Returns:
+//
+//	func([]string, slog.Attr) slog.Attr: A ReplaceAttr function that formats time values.
+//
+// Example:
+//
+//		// Create a ReplaceAttr function that formats times using a custom format.
+//		customTimeFormat := FormatTimes("2006-01-02 15:04:05")
+//
+//		// Create a logger with the ReplaceAttr function.
+//		logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+//		    ReplaceAttr: customTimeFormat,
+//		}))
+//
+//		// Log a message with a time attribute.
+//		logger.Info("Time example", slog.Time("now", time.Now()))
+//		// Output might be: level=INFO msg="Time example" now="2023-10-27 10:30:00"
+//
+//	 // Create a ReplaceAttr function that formats times using a predefined format.
+//	 dateTimeFormat := FormatTimes(time.DateTime)
+//
+//	 // Create a logger with the ReplaceAttr function.
+//	 logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+//	     ReplaceAttr: dateTimeFormat,
+//	 }))
+//
+//	 // Log a message with a time attribute.
+//	 logger.Info("Time example", slog.Time("now", time.Now()))
+//	 // Output might be: level=INFO msg="Time example" now="2023-10-27 10:30:00.000"
 func FormatTimes(format string) func([]string, slog.Attr) slog.Attr {
 	return func(_ []string, a slog.Attr) slog.Attr {
 		if a.Value.Kind() == slog.KindTime {
@@ -88,6 +149,20 @@ func FormatTimes(format string) func([]string, slog.Attr) slog.Attr {
 	}
 }
 
+// SimpleTime returns a ReplaceAttr function that formats time values to a simple time format: "15:04:05.000".
+//
+// It's a convenience function that uses FormatTimes internally with a predefined format.
+//
+// Example:
+//
+//	// Create a logger with the ReplaceAttr function.
+//	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+//	    ReplaceAttr: SimpleTime(),
+//	}))
+//
+//	// Log a message with a time attribute.
+//	logger.Info("Time example", slog.Time("now", time.Now()))
+//	// Output might be: level=INFO msg="Time example" now="10:30:00.000"
 func SimpleTime() func([]string, slog.Attr) slog.Attr {
 	return FormatTimes("15:04:05.000")
 }
