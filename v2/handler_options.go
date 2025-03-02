@@ -18,6 +18,8 @@ var (
 	ErrInvalidLevelType   = errors.New("levels must be a string or int value")
 )
 
+type HandlerFn func(name string, w io.Writer, opts *slog.HandlerOptions) slog.Handler
+
 type HandlerOptions struct {
 	// default level for all loggers, defaults to slog.LevelInfo
 	Level slog.Leveler
@@ -27,14 +29,20 @@ type HandlerOptions struct {
 	AddSource bool
 	// replace attributes
 	ReplaceAttrs []func(groups []string, a slog.Attr) slog.Attr
-	// constructor for sinks, defaults to slog.NewTextHandler
-	HandlerFn func(name string, w io.Writer, opts *slog.HandlerOptions) slog.Handler
+	// If set, will be called to construct handler instances.
+	// `name` is the name of the logger being created.  For the default
+	// logger, this will be empty.
+	// `w` and `opts` will naver be nil.
+	//
+	// `name` may be used to return different handlers or unique middleware
+	// for particular loggers.
+	HandlerFn HandlerFn
 	// middleware applied to all sinks
 	Middleware []Middleware
 }
 
-func DevDefaults() HandlerOptions {
-	return HandlerOptions{
+func DevDefaults() *HandlerOptions {
+	return &HandlerOptions{
 		HandlerFn: LookupHandlerFn(TermColorHandler),
 		AddSource: true,
 	}
@@ -70,13 +78,15 @@ func (o *HandlerOptions) UnmarshalJSON(bytes []byte) error {
 		return fmt.Errorf("invalid json config: %w", err)
 	}
 
-	var opts HandlerOptions
-	if o != nil {
-		opts = *o
-	}
+	var opts *HandlerOptions
 
-	if s.Development {
+	switch {
+	case s.Development:
 		opts = DevDefaults()
+	case o == nil:
+		opts = &HandlerOptions{}
+	default:
+		opts = o.Clone()
 	}
 
 	if s.Level != nil {
@@ -111,6 +121,14 @@ func (o *HandlerOptions) UnmarshalJSON(bytes []byte) error {
 		return fmt.Errorf("%w: %v", ErrInvalidLevelsValue, s.Levels)
 	}
 
+	// for backward compatibility with flumev1, if there is a level named "*"
+	// in the levels map, treat it like setting the default level.  Again,
+	// to match v1 behavior, this overrides the default level option.
+	if lvl, ok := opts.Levels["*"]; ok {
+		opts.Level = lvl
+		delete(opts.Levels, "*")
+	}
+
 	// for backward compat with v1, allow "addCaller" as
 	// an alias for "addSource"
 	if s.AddSource == nil {
@@ -131,7 +149,7 @@ func (o *HandlerOptions) UnmarshalJSON(bytes []byte) error {
 		opts.HandlerFn = LookupHandlerFn(s.Handler)
 	}
 
-	*o = opts
+	*o = *opts
 
 	return nil
 }

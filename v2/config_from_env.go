@@ -66,6 +66,8 @@ func MustConfigFromEnv(envvars ...string) {
 func UnmarshalEnv(o *HandlerOptions, envvars ...string) error {
 	for _, v := range envvars {
 		if configString := os.Getenv(v); configString != "" {
+			// todo: need to add a branch here to handle when the environment variable is
+			// set to a raw levels string, and isn't JSON
 			err := json.Unmarshal([]byte(configString), o)
 			if err != nil {
 				return fmt.Errorf("parsing configuration from environment variable %v: %w", v, err)
@@ -85,15 +87,21 @@ func resetBuiltInHandlerFns() {
 	textHandlerFn := func(_ string, w io.Writer, opts *slog.HandlerOptions) slog.Handler {
 		return slog.NewTextHandler(w, opts)
 	}
-	handlerFns.Store(TextHandler, textHandlerFn)
+	registerHandlerFn(TextHandler, textHandlerFn)
 	// for v1 compatibility, "console" is an alias for "text"
-	handlerFns.Store(ConsoleHandler, textHandlerFn)
-	handlerFns.Store(JSONHandler, func(_ string, w io.Writer, opts *slog.HandlerOptions) slog.Handler {
+	registerHandlerFn(ConsoleHandler, textHandlerFn)
+	registerHandlerFn(JSONHandler, func(_ string, w io.Writer, opts *slog.HandlerOptions) slog.Handler {
 		return slog.NewJSONHandler(w, opts)
 	})
-	handlerFns.Store(TermHandler, termHandlerFn(false))
-	handlerFns.Store(TermColorHandler, termHandlerFn(true))
-	handlerFns.Store(NoopHandler, func(_ string, _ io.Writer, _ *slog.HandlerOptions) slog.Handler {
+	registerHandlerFn(TermHandler, func(_ string, w io.Writer, opts *slog.HandlerOptions) slog.Handler {
+		termOpts := termHandlerOptions(opts)
+		termOpts.NoColor = true
+		return console.NewHandler(w, termOpts)
+	})
+	registerHandlerFn(TermColorHandler, func(_ string, w io.Writer, opts *slog.HandlerOptions) slog.Handler {
+		return console.NewHandler(w, termHandlerOptions(opts))
+	})
+	registerHandlerFn(NoopHandler, func(_ string, _ io.Writer, _ *slog.HandlerOptions) slog.Handler {
 		return noop
 	})
 }
@@ -104,17 +112,23 @@ func initHandlerFns() {
 	})
 }
 
-func LookupHandlerFn(name string) func(string, io.Writer, *slog.HandlerOptions) slog.Handler {
+func LookupHandlerFn(name string) HandlerFn {
 	initHandlerFns()
 	v, ok := handlerFns.Load(name)
 	if !ok {
 		return nil
 	}
-	return v.(func(string, io.Writer, *slog.HandlerOptions) slog.Handler) //nolint:forcetypeassert // if it's not a HandlerFn, we should panic
+	// fn := v.(func(string, io.Writer, *slog.HandlerOptions) slog.Handler) //nolint:forcetypeassert // if it's not a HandlerFn, we should panic
+	fn := v.(HandlerFn) //nolint:forcetypeassert // if it's not a HandlerFn, we should panic
+	return fn
 }
 
-func RegisterHandlerFn(name string, fn func(string, io.Writer, *slog.HandlerOptions) slog.Handler) {
+func RegisterHandlerFn(name string, fn HandlerFn) {
 	initHandlerFns()
+	registerHandlerFn(name, fn)
+}
+
+func registerHandlerFn(name string, fn HandlerFn) {
 	if fn == nil {
 		panic(fmt.Sprintf("constructor for sink %q is nil", name))
 	}
@@ -124,19 +138,26 @@ func RegisterHandlerFn(name string, fn func(string, io.Writer, *slog.HandlerOpti
 	handlerFns.Store(name, fn)
 }
 
-func termHandlerFn(color bool) func(string, io.Writer, *slog.HandlerOptions) slog.Handler {
-	return func(_ string, w io.Writer, opts *slog.HandlerOptions) slog.Handler {
-		if opts == nil {
-			opts = &slog.HandlerOptions{}
-		}
-		return console.NewHandler(w, &console.HandlerOptions{
-			NoColor:            !color,
-			AddSource:          opts.AddSource,
-			Theme:              console.NewDefaultTheme(),
-			ReplaceAttr:        opts.ReplaceAttr,
-			TimeFormat:         "15:04:05.000",
-			HeaderFormat:       "%t %[" + LoggerKey + "]8h %l | %m",
-			TruncateSourcePath: 2,
-		})
+func termHandlerOptions(opts *slog.HandlerOptions) *console.HandlerOptions {
+	// todo: it would be nice if consumers could tweak this, either programatically
+	// or via configuration, but that would mean exposing the dependency on console-slog,
+	// which is currently opaque.  For now, I want to keep this opaque.  That means, if
+	// a consumer was a slightly different configuration of console-slog, they will
+	// have to construct it from scratch themselves.
+	if opts == nil {
+		opts = &slog.HandlerOptions{}
+	}
+	theme := console.NewDefaultTheme()
+	theme.Name = "flume"
+	theme.Source = console.ToANSICode(console.BrightBlack, console.Italic)
+	theme.AttrKey = console.ToANSICode(console.Green, console.Faint)
+	return &console.HandlerOptions{
+		AddSource:          opts.AddSource,
+		ReplaceAttr:        opts.ReplaceAttr,
+		Level:              opts.Level,
+		Theme:              theme,
+		TimeFormat:         "15:04:05.000",
+		HeaderFormat:       "%t %[" + LoggerKey + "]8h |%l| %m %a %(source){→ %s%}",
+		TruncateSourcePath: 2,
 	}
 }

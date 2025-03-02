@@ -25,15 +25,12 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
-	"log/slog"
 	"os"
 	"strconv"
 	"sync"
 	"sync/atomic"
 
 	"github.com/ThalesGroup/flume/v2"
-	"github.com/ansel1/console-slog"
 )
 
 var Disabled bool
@@ -90,20 +87,9 @@ func MustSetDefaults() {
 }
 
 func TestDefaults() *flume.HandlerOptions {
-	return &flume.HandlerOptions{
-		Level: slog.LevelDebug,
-		HandlerFn: func(_ string, w io.Writer, opts *slog.HandlerOptions) slog.Handler {
-			return console.NewHandler(w, &console.HandlerOptions{
-				TimeFormat:         "15:04:05.000",
-				Level:              opts.Level,
-				AddSource:          opts.AddSource,
-				NoColor:            true,
-				TruncateSourcePath: 2,
-				HeaderFormat:       "%t %[" + flume.LoggerKey + "]12h %l | %m",
-			})
-		},
-		AddSource: true,
-	}
+	dd := flume.DevDefaults()
+	dd.Level = flume.LevelAll
+	return dd
 }
 
 // Start captures all logs written during the test.  If the test succeeds, the

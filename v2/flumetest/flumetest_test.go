@@ -12,7 +12,12 @@ import (
 )
 
 func init() {
-	MustSetDefaults()
+	opts := &flume.HandlerOptions{
+		HandlerFn: flume.LookupHandlerFn(flume.TermHandler),
+		AddSource: true,
+		Level:     flume.LevelAll,
+	}
+	flume.Default().SetHandlerOptions(opts)
 }
 
 type mockT struct {
