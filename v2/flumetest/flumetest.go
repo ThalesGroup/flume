@@ -39,22 +39,33 @@ var configString string
 
 //nolint:gochecknoinits
 func init() {
-	flag.BoolVar(&Disabled, "disable-flumetest", false, "Disables all flumetest features: logging will happen as normal")
-	flag.BoolVar(&Verbose, "vv", false, "During tests, forwards all logs immediately to t.Log()")
-	flag.StringVar(&configString, "log-config", "", "logging config: Overrides default log settings with configuration string")
-
 	Disabled, _ = strconv.ParseBool(os.Getenv("FLUME_TEST_DISABLE"))
 	Verbose, _ = strconv.ParseBool(os.Getenv("FLUME_TEST_VERBOSE"))
 	configString = os.Getenv("FLUME_TEST_CONFIG_STRING")
 }
 
+// RegisterFlags registers command line flag options related flume:
+//
+//	-disable-flumetest
+//	-vv
+//	-log-config
+//
+// These options may also be set via environment variables.
+//
+// If you wish to use these flags in your tests, you should call this in TestMain().
+func RegisterFlags() {
+	flag.BoolVar(&Disabled, "disable-flumetest", false, "Disables all flumetest features: logging will happen as normal")
+	flag.BoolVar(&Verbose, "vv", false, "During tests, forwards all logs immediately to t.Log()")
+	flag.StringVar(&configString, "log-config", "", "logging config: Overrides default log settings with configuration string")
+}
+
 // SetDefaults configures the default flume handler with suggested settings
 // for tests. Enables all logging, turns on call site logging, but discards all logs.
 //
-// Pass the `disable-flumetest` flag to `go test`, or set the `FLUME_TEST_DISABLE` environment variable,
+// Pass the `-disable-flumetest` flag to `go test`, or set the `FLUME_TEST_DISABLE` environment variable,
 // to disable flumetest features and log as normal.
 //
-// Pass the `log-config` flag to `go test`, or set the `FLUME_TEST_CONFIG_STRING` environment variable,
+// Pass the `-log-config` flag to `go test`, or set the `FLUME_TEST_CONFIG_STRING` environment variable,
 // to configure the flume handler with a custom configuration.
 //
 // Example:
