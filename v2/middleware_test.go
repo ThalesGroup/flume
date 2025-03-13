@@ -3,14 +3,11 @@ package flume
 import (
 	"bytes"
 	"context"
-	"fmt"
-	"io"
 	"log/slog"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestReplaceAttrs(t *testing.T) {
@@ -239,244 +236,114 @@ func TestReplaceAttrs(t *testing.T) {
 	}
 }
 
-func TestAbbreviateLevel(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    slog.Attr
-		expected slog.Attr
-	}{
-		{
-			name:     "info level",
-			input:    slog.Any(slog.LevelKey, slog.LevelInfo),
-			expected: slog.String(slog.LevelKey, "INF"),
-		},
-		{
-			name:     "error level",
-			input:    slog.Any(slog.LevelKey, slog.LevelError),
-			expected: slog.String(slog.LevelKey, "ERR"),
-		},
-		{
-			name:     "debug level",
-			input:    slog.Any(slog.LevelKey, slog.LevelDebug),
-			expected: slog.String(slog.LevelKey, "DBG"),
-		},
-		{
-			name:     "warn level",
-			input:    slog.Any(slog.LevelKey, slog.LevelWarn),
-			expected: slog.String(slog.LevelKey, "WRN"),
-		},
-		{
-			name:     "non-level attr",
-			input:    slog.Any("foo", "bar"),
-			expected: slog.Any("foo", "bar"),
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := AbbreviateLevel(nil, tt.input)
-			assert.Equal(t, tt.expected.String(), result.String())
-			assert.True(t, tt.expected.Equal(result))
-		})
-	}
-}
-
-func TestFormatTimes(t *testing.T) {
-	now := time.Date(2023, 12, 25, 13, 14, 15, 123456789, time.UTC)
-	tests := []struct {
-		name     string
-		format   string
-		input    slog.Attr
-		expected slog.Attr
-	}{
-		{
-			name:     "formats time with custom format",
-			format:   "2006-01-02 15:04:05",
-			input:    slog.Time("timestamp", now),
-			expected: slog.String("timestamp", "2023-12-25 13:14:15"),
-		},
-		{
-			name:     "formats time with kitchen format",
-			format:   time.Kitchen,
-			input:    slog.Time("timestamp", now),
-			expected: slog.String("timestamp", "1:14PM"),
-		},
-		{
-			name:     "non-time attr is unchanged",
-			format:   time.RFC3339,
-			input:    slog.String("foo", "bar"),
-			expected: slog.String("foo", "bar"),
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			formatter := FormatTimes(tt.format)
-			result := formatter(nil, tt.input)
-			assert.Equal(t, tt.expected.String(), result.String())
-			assert.True(t, tt.expected.Equal(result))
-		})
-	}
-}
-
-func TestSimpleTime(t *testing.T) {
-	now := time.Date(2023, 12, 25, 13, 14, 15, 123456789, time.UTC)
-	tests := []struct {
-		name     string
-		input    slog.Attr
-		expected slog.Attr
-	}{
-		{
-			name:     "formats time with simple format",
-			input:    slog.Time("timestamp", now),
-			expected: slog.String("timestamp", "13:14:15.123"),
-		},
-		{
-			name:     "non-time attr is unchanged",
-			input:    slog.String("foo", "bar"),
-			expected: slog.String("foo", "bar"),
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			formatter := SimpleTime()
-			result := formatter(nil, tt.input)
-			assert.Equal(t, tt.expected.String(), result.String())
-			assert.True(t, tt.expected.Equal(result))
-		})
-	}
-}
-
-func TestChainReplaceAttrs(t *testing.T) {
-	tests := []struct {
-		name             string
-		wantText         string
-		args             []any
-		replaceAttrFuncs []func(groups []string, a slog.Attr) slog.Attr
-	}{
-		{
-			name:     "nil function",
-			wantText: "level=INFO msg=hi logger=blue color=red\n",
-			args:     []any{"color", "red"},
-			replaceAttrFuncs: []func(groups []string, a slog.Attr) slog.Attr{
-				nil,
+func TestReplaceAttrs_SkipRecord(t *testing.T) {
+	t.Run("check arg passed to SkipRecord", func(t *testing.T) {
+		ht := handlerTest{
+			handlerFn: func(buf *bytes.Buffer) slog.Handler {
+				mw := ReplaceAttrs()
+				mw.SkipRecord = func(r slog.Record) bool {
+					rec := slog.NewRecord(time.Time{}, slog.LevelInfo, "hi", 0)
+					rec.Add("color", "red")
+					assert.Equal(t, rec, r)
+					return true
+				}
+				return NewHandler(buf, &HandlerOptions{
+					Middleware: []Middleware{mw},
+				})
 			},
+			recFn: func(rec slog.Record) slog.Record {
+				rec.Add("color", "red")
+				return rec
+			},
+			want: "level=INFO msg=hi color=red\n",
+		}
+		ht.Run(t)
+	})
+
+	tests := []handlerTest{
+		{
+			name: "SkipRecord=true",
+			handlerFn: func(buf *bytes.Buffer) slog.Handler {
+				mw := ReplaceAttrs(removeKeys("color"))
+				mw.SkipRecord = func(_ slog.Record) bool {
+					return true
+				}
+				return NewHandler(buf, &HandlerOptions{
+					Middleware: []Middleware{mw},
+				})
+			},
+			recFn: func(rec slog.Record) slog.Record {
+				rec.Add("color", "red")
+				return rec
+			},
+			want: "level=INFO msg=hi color=red\n",
 		},
 		{
-			name:     "single function",
-			wantText: "level=INFO msg=hi logger=blue color=blue\n",
-			args:     []any{"color", "red"},
-			replaceAttrFuncs: []func(groups []string, a slog.Attr) slog.Attr{
-				replaceKey("color", slog.String("color", "blue")),
+			name: "SkipRecord=false",
+			handlerFn: func(buf *bytes.Buffer) slog.Handler {
+				mw := ReplaceAttrs(removeKeys("color"))
+				mw.SkipRecord = func(_ slog.Record) bool {
+					return false
+				}
+				return NewHandler(buf, &HandlerOptions{
+					Middleware: []Middleware{mw},
+				})
 			},
+			recFn: func(rec slog.Record) slog.Record {
+				rec.Add("color", "red")
+				return rec
+			},
+			want: "level=INFO msg=hi\n",
 		},
 		{
-			name:     "multiple functions",
-			wantText: "level=INFO msg=hi logger=blue color=blue size=small\n",
-			args:     []any{"color", "red", "size", "big"},
-			replaceAttrFuncs: []func(groups []string, a slog.Attr) slog.Attr{
-				nil,
-				replaceKey("color", slog.String("color", "blue")),
-				nil,
-				replaceKey("size", slog.String("size", "small")),
-				nil,
+			name: "SkipRecord does not affect WithAttrs",
+			handlerFn: func(buf *bytes.Buffer) slog.Handler {
+				mw := ReplaceAttrs(removeKeys("color"))
+				mw.SkipRecord = func(_ slog.Record) bool {
+					return true
+				}
+				return NewHandler(buf, &HandlerOptions{
+					Middleware: []Middleware{mw},
+				}).WithAttrs([]slog.Attr{slog.String("color", "red"), slog.String("size", "big")})
 			},
-		},
-		{
-			name:     "stop processing after first empty attr",
-			wantText: "level=INFO msg=hi logger=blue\n",
-			args:     []any{"color", "red"},
-			replaceAttrFuncs: []func(groups []string, a slog.Attr) slog.Attr{
-				removeKeys("color"),
-				func(_ []string, a slog.Attr) slog.Attr {
-					if a.Key == "color" {
-						panic("should not have been called")
-					}
-					return a
-				},
-			},
-		},
-		{
-			name:     "stop processing if value is a group",
-			wantText: "level=INFO msg=hi logger=blue color.red=blue\n",
-			args:     []any{"color", "red"},
-			replaceAttrFuncs: []func(groups []string, a slog.Attr) slog.Attr{
-				replaceKey("color", slog.Group("color", slog.String("red", "blue"))),
-				func(_ []string, a slog.Attr) slog.Attr {
-					if a.Key == "color" {
-						panic("should not have been called")
-					}
-					return a
-				},
-			},
+			want: "level=INFO msg=hi size=big\n", // processing should have been skipped
 		},
 	}
+
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			buf := bytes.NewBuffer(nil)
-			replaceAttrFuncs := test.replaceAttrFuncs
-			replaceAttrFuncs = append(replaceAttrFuncs, removeKeys(slog.TimeKey))
-
-			h := slog.NewTextHandler(buf, &slog.HandlerOptions{ReplaceAttr: ChainReplaceAttrs(replaceAttrFuncs...)})
-			rec := slog.NewRecord(time.Time{}, slog.LevelInfo, "hi", 0)
-			rec.Add(slog.String("logger", "blue"))
-			rec.Add(test.args...)
-			err := h.Handle(context.Background(), rec)
-			require.NoError(t, err)
-			assert.Equal(t, test.wantText, buf.String())
-		})
+		t.Run(test.name, test.Run)
 	}
 }
 
-type detailError struct {
-	msg    string
-	detail string
-}
-
-func (d *detailError) Error() string {
-	return d.msg
-}
-
-func (d *detailError) Format(s fmt.State, _ rune) {
-	_, _ = fmt.Fprint(s, d.msg)
-	if s.Flag('+') {
-		_, _ = fmt.Fprint(s, d.detail)
-	}
-}
-
-func TestDetailedErrors(t *testing.T) {
-	buf := bytes.NewBuffer(nil)
-	opts := &HandlerOptions{
-		HandlerFn: func(_ string, out io.Writer, opts *slog.HandlerOptions) slog.Handler {
-			return slog.NewJSONHandler(out, opts)
+func TestReplaceAttrs_SkipBuiltins(t *testing.T) {
+	tests := []handlerTest{
+		{
+			name: "SkipBuiltins=true",
+			handlerFn: func(buf *bytes.Buffer) slog.Handler {
+				mw := ReplaceAttrs(replaceKey(slog.MessageKey, slog.String(slog.MessageKey, "bye")))
+				mw.SkipBuiltins = true
+				return NewHandler(buf, &HandlerOptions{
+					Middleware: []Middleware{mw},
+				})
+			},
+			want: "level=INFO msg=hi\n",
 		},
-		ReplaceAttrs: []func([]string, slog.Attr) slog.Attr{
-			DetailedErrors,
+		{
+			name: "SkipBuiltins=false",
+			handlerFn: func(buf *bytes.Buffer) slog.Handler {
+				mw := ReplaceAttrs(replaceKey(slog.MessageKey, slog.String(slog.MessageKey, "bye")))
+				mw.SkipBuiltins = false
+				return NewHandler(buf, &HandlerOptions{
+					Middleware: []Middleware{mw},
+				})
+			},
+			want: "level=INFO msg=bye\n",
 		},
 	}
-	h := NewHandler(buf, opts)
 
-	boom := &detailError{msg: "boom", detail: "it exploded"}
-	rec := slog.NewRecord(time.Time{}, slog.LevelInfo, "an error", 0)
-	rec.Add("error", boom)
-	err := h.Handle(context.Background(), rec)
-	require.NoError(t, err)
-
-	assert.JSONEq(t, `{"level":"INFO","msg":"an error","error":"boomit exploded"}`, buf.String())
-
-	// make sure text renders the same way
-	buf.Reset()
-	opts.HandlerFn = func(_ string, out io.Writer, opts *slog.HandlerOptions) slog.Handler {
-		return slog.NewTextHandler(out, opts)
+	for _, test := range tests {
+		t.Run(test.name, test.Run)
 	}
-	h.SetHandlerOptions(opts)
-
-	rec = slog.NewRecord(time.Time{}, slog.LevelInfo, "an error", 0)
-	rec.Add("error", boom)
-	err = h.Handle(context.Background(), rec)
-	require.NoError(t, err)
-	assert.Equal(t, "level=INFO msg=\"an error\" error=\"boomit exploded\"\n", buf.String())
 }
 
 func TestReplaceAttrs_Enabled(t *testing.T) {
