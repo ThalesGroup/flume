@@ -27,6 +27,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"sync"
 	"sync/atomic"
 
 	"github.com/ThalesGroup/flume/v2"
@@ -135,8 +136,14 @@ func Start(t testingTB) func() {
 		return revertToSnapshot
 	}
 
+	// need to lock around access to the buffer
+	// when revert() is called, we will set the loggers
+	// to some other out writer, but we can't guarantee
+	// other goroutines won't still be trying to log
+	// to this buf while revert() is use buf
+	var mu sync.Mutex
 	buf := bytes.NewBuffer(nil)
-	flume.Default().SetOut(buf)
+	flume.Default().SetOut(&syncWriter{w: buf, mu: &mu})
 
 	// since we're calling this function via t.Cleanup *and* returning
 	// the function so the caller can call it with defer, there is a good
@@ -149,6 +156,8 @@ func Start(t testingTB) func() {
 			return
 		}
 		revertToSnapshot()
+		mu.Lock()
+		defer mu.Unlock()
 		// make sure that if the test panics or fails, we dump the logs
 		recovered := recover()
 		if buf.Len() > 0 && (recovered != nil || t.Failed()) {
@@ -201,4 +210,15 @@ type testingTB interface {
 	Failed() bool
 	Log(args ...interface{})
 	Cleanup(func())
+}
+
+type syncWriter struct {
+	w  io.Writer
+	mu sync.Locker
+}
+
+func (s *syncWriter) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.w.Write(p) //nolint:wrapcheck
 }
