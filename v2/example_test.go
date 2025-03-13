@@ -30,7 +30,7 @@ func ExampleTermHandler() {
 
 	l := slog.New(NewHandler(nil, &HandlerOptions{
 		Level:     LevelInfo,
-		HandlerFn: LookupHandlerFn(TermHandler),
+		HandlerFn: TermHandlerFn(),
 		ReplaceAttrs: []func([]string, slog.Attr) slog.Attr{
 			func(_ []string, a slog.Attr) slog.Attr {
 				if a.Key == slog.TimeKey {

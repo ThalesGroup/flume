@@ -18,6 +18,12 @@ var (
 	ErrInvalidLevelType   = errors.New("levels must be a string or int value")
 )
 
+// HandlerFn is a constructor for slog handlers.  The function should return a slog.Handler
+// configured with the given writer and options.  `w` and `opts` will never be nil.
+//
+// `name` is the name of the logger for which the handler is being created, e.g. via
+// flume.New("<name>") or logger.With(flume.LoggerKey, "<name>").  This parameter may
+// be used to return different handlers or different middleware for particular loggers.
 type HandlerFn func(name string, w io.Writer, opts *slog.HandlerOptions) slog.Handler
 
 type HandlerOptions struct {
@@ -30,12 +36,7 @@ type HandlerOptions struct {
 	// replace attributes
 	ReplaceAttrs []func(groups []string, a slog.Attr) slog.Attr
 	// If set, will be called to construct handler instances.
-	// `name` is the name of the logger being created.  For the default
-	// logger, this will be empty.
-	// `w` and `opts` will naver be nil.
-	//
-	// `name` may be used to return different handlers or unique middleware
-	// for particular loggers.
+	// Defaults to TextHandlerFn()
 	HandlerFn HandlerFn
 	// middleware applied to all sinks
 	Middleware []Middleware
@@ -43,7 +44,7 @@ type HandlerOptions struct {
 
 func DevDefaults() *HandlerOptions {
 	return &HandlerOptions{
-		HandlerFn: LookupHandlerFn(TermColorHandler),
+		HandlerFn: TermColorHandlerFn(),
 		AddSource: true,
 	}
 }

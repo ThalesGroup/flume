@@ -228,7 +228,7 @@ func TestHandlerOptions_UnmarshalJSON(t *testing.T) {
 			expected: HandlerOptions{
 				Level:     slog.LevelWarn,
 				Levels:    Levels{"blue": slog.LevelWarn},
-				HandlerFn: LookupHandlerFn(TextHandler),
+				HandlerFn: TextHandlerFn(),
 				AddSource: true,
 			},
 		},
@@ -283,14 +283,14 @@ func TestHandlerOptions_UnmarshalJSON(t *testing.T) {
 			name:     "encoding as alias for defaultSink",
 			confJSON: `{"encoding":"text"}`,
 			expected: HandlerOptions{
-				HandlerFn: LookupHandlerFn(TextHandler),
+				HandlerFn: TextHandlerFn(),
 			},
 		},
 		{
 			name:     "handler has higher precedence than encoding",
 			confJSON: `{"handler":"text", "encoding":"json"}`,
 			expected: HandlerOptions{
-				HandlerFn: LookupHandlerFn(TextHandler),
+				HandlerFn: TextHandlerFn(),
 			},
 		},
 		{
@@ -311,7 +311,7 @@ func TestHandlerOptions_UnmarshalJSON(t *testing.T) {
 			name:     "text handler",
 			confJSON: `{"handler":"text"}`,
 			expected: HandlerOptions{
-				HandlerFn: LookupHandlerFn(TextHandler),
+				HandlerFn: TextHandlerFn(),
 			},
 			want: "level=INFO msg=hi\n",
 		},
@@ -319,7 +319,7 @@ func TestHandlerOptions_UnmarshalJSON(t *testing.T) {
 			name:     "json handler",
 			confJSON: `{"handler":"json"}`,
 			expected: HandlerOptions{
-				HandlerFn: LookupHandlerFn(JSONHandler),
+				HandlerFn: JSONHandlerFn(),
 			},
 			want: `{"level":"INFO","msg":"hi"}` + "\n",
 		},

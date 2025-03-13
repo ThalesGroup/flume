@@ -41,7 +41,7 @@ var initDefaultHandlerOnce sync.Once
 func Default() *Handler {
 	initDefaultHandlerOnce.Do(func() {
 		defaultHandler = NewHandler(nil, &HandlerOptions{
-			HandlerFn: LookupHandlerFn(NoopHandler),
+			HandlerFn: NoopHandlerFn(),
 		})
 	})
 	return defaultHandler

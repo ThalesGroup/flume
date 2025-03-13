@@ -13,7 +13,7 @@ import (
 
 func init() {
 	opts := &flume.HandlerOptions{
-		HandlerFn: flume.LookupHandlerFn(flume.TermHandler),
+		HandlerFn: flume.TermHandlerFn(),
 		AddSource: true,
 		Level:     flume.LevelAll,
 	}

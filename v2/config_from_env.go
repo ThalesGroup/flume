@@ -140,6 +140,31 @@ func LookupHandlerFn(name string) HandlerFn {
 	return fn
 }
 
+// JSONHandlerFn is shorthand for LookupHandlerFn("json").  Will never be nil.
+func JSONHandlerFn() HandlerFn {
+	return LookupHandlerFn(JSONHandler)
+}
+
+// TextHandlerFn is shorthand for LookupHandlerFn("text").  Will never be nil.
+func TextHandlerFn() HandlerFn {
+	return LookupHandlerFn(TextHandler)
+}
+
+// TermHandlerFn is shorthand for LookupHandlerFn("term").  Will never be nil.
+func TermHandlerFn() HandlerFn {
+	return LookupHandlerFn(TermHandler)
+}
+
+// TermColorHandlerFn is shorthand for LookupHandlerFn("term-color").  Will never be nil.
+func TermColorHandlerFn() HandlerFn {
+	return LookupHandlerFn(TermColorHandler)
+}
+
+// NoopHandlerFn is shorthand for LookupHandlerFn("noop").  Will never be nil.
+func NoopHandlerFn() HandlerFn {
+	return LookupHandlerFn(NoopHandler)
+}
+
 func RegisterHandlerFn(name string, fn HandlerFn) {
 	initHandlerFns()
 	registerHandlerFn(name, fn)
