@@ -1,6 +1,7 @@
 package flumetest
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"sync"
@@ -192,4 +193,19 @@ func TestStart(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSnapshot(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	h := flume.NewHandler(buf, nil)
+	assert.Equal(t, buf, h.Out())
+
+	buf2 := bytes.NewBuffer(nil)
+
+	revert := Snapshot(h)
+	h.SetOut(buf2)
+	assert.Equal(t, buf2, h.Out())
+
+	revert()
+	assert.Equal(t, buf, h.Out())
 }

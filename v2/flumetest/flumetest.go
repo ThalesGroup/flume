@@ -8,8 +8,7 @@
 //
 // Using SetDefaults() in your TestMain() or an init() function in your test code
 // will enabled all log levels, but discard all log output.  This ensures all your logging
-// paths are tested, but test logs are not cluttered.  An additional command-line flag
-// can be used to re-enable logging output.
+// paths are tested, but test logs are not cluttered.
 //
 // At the start of each test, the following will capture logs during the test
 // and either dump them to the t.Log() function if the test fails, or discard them if the test passes.
@@ -28,7 +27,6 @@ import (
 	"io"
 	"os"
 	"strconv"
-	"sync"
 	"sync/atomic"
 
 	"github.com/ThalesGroup/flume/v2"
@@ -130,22 +128,14 @@ func Start(t testingTB) func() {
 		return func() {}
 	}
 
-	ogOut := flume.Default().Out()
-
+	revertToSnapshot := Snapshot(flume.Default())
 	if Verbose {
-		revert := func() {
-			flume.Default().SetOut(ogOut)
-		}
-		t.Cleanup(revert)
+		t.Cleanup(revertToSnapshot)
 		flume.Default().SetOut(flume.LogFuncWriter(t.Log, true))
-		return revert
+		return revertToSnapshot
 	}
-	// need to use a synchronized version of buf, since
-	// logs may be written on other goroutines than this one,
-	// and bytes.Buffer is not concurrent safe.
-	buf := &lockedBuf{
-		buf: bytes.NewBuffer(nil),
-	}
+
+	buf := bytes.NewBuffer(nil)
 	flume.Default().SetOut(buf)
 
 	// since we're calling this function via t.Cleanup *and* returning
@@ -158,7 +148,7 @@ func Start(t testingTB) func() {
 		if !ran.CompareAndSwap(false, true) {
 			return
 		}
-		flume.Default().SetOut(ogOut)
+		revertToSnapshot()
 		// make sure that if the test panics or fails, we dump the logs
 		recovered := recover()
 		if buf.Len() > 0 && (recovered != nil || t.Failed()) {
@@ -189,27 +179,22 @@ func Start(t testingTB) func() {
 	return revert
 }
 
-type lockedBuf struct {
-	buf *bytes.Buffer
-	sync.Mutex
-}
-
-func (l *lockedBuf) Write(p []byte) (int, error) {
-	l.Lock()
-	defer l.Unlock()
-	return l.buf.Write(p) //nolint:wrapcheck
-}
-
-func (l *lockedBuf) Len() int {
-	l.Lock()
-	defer l.Unlock()
-	return l.buf.Len()
-}
-
-func (l *lockedBuf) String() string {
-	l.Lock()
-	defer l.Unlock()
-	return l.buf.String()
+// Snapshot returns a function which will revert the configuration
+// of the given handler to its state at the time Snapshot() was called.
+// The state includes the current output writer, and the handler opts.
+// Useful in tests to temporarily change the state of the handler for the
+// duration of the test, e.g.:
+//
+//	t.Cleanup(flumetest.Snapshot(flume.Default()))
+//	// or...
+//	defer flumetest.Snapshot(flume.Default())()
+func Snapshot(h *flume.Handler) func() {
+	w := h.Out()
+	opts := h.HandlerOptions()
+	return func() {
+		h.SetOut(w)
+		h.SetHandlerOptions(opts)
+	}
 }
 
 type testingTB interface {
@@ -217,68 +202,3 @@ type testingTB interface {
 	Log(args ...interface{})
 	Cleanup(func())
 }
-
-// func start(t testingTB) func() {
-// 	if Disabled {
-// 		// no op
-// 		return func() {}
-// 	}
-
-// 	ogOut := flume.Default().Out()
-
-// 	if Verbose {
-// 		revert := func() {
-// 			flume.Default().SetOut(ogOut)
-// 		}
-// 		t.Cleanup(revert)
-// 		flume.Default().SetOut(flume.LogFuncWriter(t.Log, true))
-// 		return revert
-// 	}
-// 	// need to use a synchronized version of buf, since
-// 	// logs may be written on other goroutines than this one,
-// 	// and bytes.Buffer is not concurrent safe.
-// 	buf := &lockedBuf{
-// 		buf: bytes.NewBuffer(nil),
-// 	}
-// 	flume.Default().SetOut(buf)
-
-// 	// since we're calling this function via t.Cleanup *and* returning
-// 	// the function so the caller can call it with defer, there is a good
-// 	// chance it will be called twice.  I can't use sync.Once here, because
-// 	// if recover() is called inside the Once func, it doesn't work.  recover()
-// 	// must be called directly in the deferred function
-// 	ran := atomic.Bool{}
-// 	revert := func() {
-// 		if !ran.CompareAndSwap(false, true) {
-// 			return
-// 		}
-// 		flume.Default().SetOut(ogOut)
-// 		// make sure that if the test panics or fails, we dump the logs
-// 		recovered := recover()
-// 		if buf.Len() > 0 && (recovered != nil || t.Failed()) {
-// 			t.Log(buf.String())
-// 		}
-// 		if recovered != nil {
-// 			panic(recovered)
-// 		}
-// 	}
-
-// 	t.Cleanup(revert)
-// 	// Calling Cleanup() to revert these changes should be sufficient, but isn't due to
-// 	// this bug: https://github.com/golang/go/issues/49929
-// 	// Due to that issue, if the test panics:
-// 	// 1. t.Failed() returns false inside the cleanup function
-// 	// 2. the revert doesn't know the test failed
-// 	// 3. the revert function doesn't flush its captured logs as it should when a test fails
-// 	//
-// 	// So we do both: call the revert function via t.Cleanup, as well as return a function
-// 	// that the test can call via defer.  t.Cleanup ensures we as least return the state
-// 	// of the system, even if the test itself doesn't call the revert cleanup function,
-// 	// but returning the cleanup function as well means tests that *do* call it via defer
-// 	// will correctly handle test panics.
-// 	//
-// 	// Even if that bug is fixed, having the option to flush the logs with defer is useful.
-// 	// For example, if you want to discard logs from setup code, then capture logs for the
-// 	// body of the test.
-// 	return revert
-// }
