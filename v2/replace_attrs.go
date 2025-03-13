@@ -151,7 +151,7 @@ func RFC3339MillisTime() func(_ []string, a slog.Attr) slog.Attr {
 // FixedTime replaces all time attributes with a fixed value.  Useful in
 // testing to get a predictable log line.
 func FixedTime(t time.Time) func(_ []string, a slog.Attr) slog.Attr {
-	return transformValuesOfKind(slog.KindTime, func(v slog.Value) slog.Value {
+	return transformValuesOfKind(slog.KindTime, func(_ slog.Value) slog.Value {
 		return slog.TimeValue(t)
 	})
 }
@@ -165,7 +165,7 @@ func SecondsDuration() func(_ []string, a slog.Attr) slog.Attr {
 }
 
 func transformValuesOfKind(kind slog.Kind, transform func(slog.Value) slog.Value) func([]string, slog.Attr) slog.Attr {
-	return func(s []string, a slog.Attr) slog.Attr {
+	return func(_ []string, a slog.Attr) slog.Attr {
 		if a.Value.Kind() == kind {
 			a.Value = transform(a.Value)
 		}

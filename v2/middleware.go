@@ -108,24 +108,9 @@ func (r *ReplaceAttrsMiddleware) Handle(ctx context.Context, record slog.Record)
 	}
 
 	if !r.SkipBuiltins {
-		attr := r.replaceAttr(nil, slog.String(slog.MessageKey, record.Message))
-		record.Message = attr.Value.String()
-
-		attr = r.replaceAttr(nil, slog.Time(slog.TimeKey, record.Time))
-		if attr.Value.Kind() == slog.KindTime {
-			record.Time = attr.Value.Time()
-		} else if attr.Value.Equal(slog.Value{}) {
-			record.Time = time.Time{}
-		}
-
-		attr = r.replaceAttr(nil, slog.Any(slog.LevelKey, record.Level))
-		if attr.Value.Kind() == slog.KindAny && attr.Key == slog.LevelKey {
-			if lvl, ok := attr.Value.Any().(slog.Level); ok {
-				record.Level = lvl
-			}
-		} else if attr.Value.Equal(slog.Value{}) {
-			record.Level = slog.LevelInfo
-		}
+		record.Message = r.applyToMessage(record.Message)
+		record.Time = r.applyToTime(record.Time)
+		record.Level = r.applyToLevel(record.Level)
 	}
 
 	if record.NumAttrs() == 0 {
@@ -141,6 +126,35 @@ func (r *ReplaceAttrsMiddleware) Handle(ctx context.Context, record slog.Record)
 		return true
 	})
 	return r.next.Handle(ctx, newRecord)
+}
+
+func (r *ReplaceAttrsMiddleware) applyToMessage(msg string) string {
+	attr := r.replaceAttr(nil, slog.String(slog.MessageKey, msg))
+	return attr.Value.String()
+}
+
+func (r *ReplaceAttrsMiddleware) applyToTime(t time.Time) time.Time {
+	attr := r.replaceAttr(nil, slog.Time(slog.TimeKey, t))
+	if attr.Value.Kind() == slog.KindTime {
+		return attr.Value.Time()
+	}
+	if attr.Value.Equal(slog.Value{}) {
+		return time.Time{}
+	}
+	return t
+}
+
+func (r *ReplaceAttrsMiddleware) applyToLevel(l slog.Level) slog.Level {
+	attr := r.replaceAttr(nil, slog.Any(slog.LevelKey, l))
+	if attr.Value.Equal(slog.Value{}) {
+		return slog.LevelInfo
+	}
+	if attr.Value.Kind() == slog.KindAny && attr.Key == slog.LevelKey {
+		if lvl, ok := attr.Value.Any().(slog.Level); ok {
+			return lvl
+		}
+	}
+	return l
 }
 
 func (r *ReplaceAttrsMiddleware) WithAttrs(attrs []slog.Attr) slog.Handler {
