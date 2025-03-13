@@ -44,9 +44,9 @@ func (o *HandlerOptions) handler(name string, w io.Writer) slog.Handler {
 		handlerFn = TextHandlerFn()
 	}
 	sink = handlerFn(name, w, opts)
-		if sink == nil {
-			sink = noop
-		}
+	if sink == nil {
+		sink = noop
+	}
 
 	for i := len(o.Middleware) - 1; i >= 0; i-- {
 		sink = o.Middleware[i].Apply(sink)
@@ -175,20 +175,16 @@ type innerHandler struct {
 	transformers []func(slog.Handler) slog.Handler
 
 	openGroups int
-	loggerName string
 }
 
 func (s *innerHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	var delegate *atomic.Pointer[slog.Handler]
-
-	name := s.loggerName
 
 	// scan attrs for a logger name, but only if there is no group open
 	// the logger name attribute is not allowed to be nested in a group
 	if s.openGroups == 0 {
 		if name := loggerName(attrs); name != "" {
 			delegate = s.root.delegatePtr(name)
-			s.loggerName = name
 		}
 	}
 
@@ -203,7 +199,6 @@ func (s *innerHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 		root:         s.root,
 		basePtr:      delegate,
 		transformers: slices.Clip(append(s.transformers, transformer)),
-		loggerName:   name,
 	}
 }
 
@@ -217,7 +212,6 @@ func (s *innerHandler) WithGroup(name string) slog.Handler {
 		basePtr:      s.basePtr,
 		transformers: slices.Clip(append(s.transformers, transformer)),
 		openGroups:   s.openGroups + 1,
-		loggerName:   s.loggerName,
 	}
 }
 
