@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"sync"
@@ -87,6 +88,8 @@ func SetDefaults() error {
 		flume.Default().SetHandlerOptions(TestDefaults())
 	}
 
+	flume.Default().SetOut(io.Discard)
+
 	return nil
 }
 
@@ -98,9 +101,11 @@ func MustSetDefaults() {
 }
 
 func TestDefaults() *flume.HandlerOptions {
-	dd := flume.DevDefaults()
-	dd.Level = flume.LevelAll
-	return dd
+	return &flume.HandlerOptions{
+		HandlerFn: flume.TermHandlerFn(),
+		AddSource: true,
+		Level:     flume.LevelAll,
+	}
 }
 
 // Start captures all logs written during the test.  If the test succeeds, the
