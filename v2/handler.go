@@ -23,7 +23,7 @@ func (o *HandlerOptions) handler(name string, w io.Writer) slog.Handler {
 
 	if o == nil {
 		// special case: default to a text handler
-		return slog.NewTextHandler(w, nil)
+		return TextHandlerFn()(name, w, &slog.HandlerOptions{})
 	}
 
 	opts := &slog.HandlerOptions{
@@ -39,14 +39,14 @@ func (o *HandlerOptions) handler(name string, w io.Writer) slog.Handler {
 	}
 
 	var sink slog.Handler
-	if o.HandlerFn != nil {
-		sink = o.HandlerFn(name, w, opts)
+	handlerFn := o.HandlerFn
+	if handlerFn == nil {
+		handlerFn = TextHandlerFn()
+	}
+	sink = handlerFn(name, w, opts)
 		if sink == nil {
 			sink = noop
 		}
-	} else {
-		sink = slog.NewTextHandler(w, opts)
-	}
 
 	for i := len(o.Middleware) - 1; i >= 0; i-- {
 		sink = o.Middleware[i].Apply(sink)
