@@ -98,12 +98,22 @@ func (h *Handler) Named(name string) slog.Handler {
 	return h.WithAttrs([]slog.Attr{slog.String(LoggerKey, name)})
 }
 
+// HandlerOptions returns a copy of the current handler options.
+// This will never return nil.
 func (h *Handler) HandlerOptions() *HandlerOptions {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
-	return h.opts.Clone()
+	opts := h.opts.Clone()
+	if opts == nil {
+		return &HandlerOptions{}
+	}
+	return opts
 }
 
+// SetHandlerOptions sets the options passed to HandlerFn
+// when sink handlers are created.  This triggers rebuilding
+// all the sink handlers with the new opts,
+// so affects on logging will apply immediately.
 func (h *Handler) SetHandlerOptions(opts *HandlerOptions) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
@@ -117,6 +127,10 @@ func (h *Handler) Out() io.Writer {
 	return h.w
 }
 
+// SetOut sets the output writer passed to HandlerFn when sink handlers
+// are created.  This triggers rebuilding all
+// the sink handlers with the new opts,
+// so affects on logging will apply immediately.
 func (h *Handler) SetOut(w io.Writer) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
