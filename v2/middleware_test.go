@@ -365,7 +365,7 @@ func TestHandlerMiddlewareFunc(t *testing.T) {
 		Level: slog.LevelDebug,
 	})
 
-	middleware := HandlerMiddlewareFunc(func(ctx context.Context, record slog.Record, next slog.Handler) error {
+	middleware := SimpleMiddlewareFn(func(ctx context.Context, record slog.Record, next slog.Handler) error {
 		record.AddAttrs(slog.String("foo", "bar"))
 		return next.Handle(ctx, record)
 	})

@@ -299,7 +299,7 @@ func TestHandlerOptions_ReplaceAttrs(t *testing.T) {
 
 func TestHandlerOptions_Middleware(t *testing.T) {
 	addAttrMW := func(attr slog.Attr) Middleware {
-		return HandlerMiddlewareFunc(func(ctx context.Context, record slog.Record, next slog.Handler) error {
+		return SimpleMiddlewareFn(func(ctx context.Context, record slog.Record, next slog.Handler) error {
 			record.AddAttrs(attr)
 			return next.Handle(ctx, record)
 		})
@@ -332,7 +332,7 @@ func TestHandlerOptions_Clone(t *testing.T) {
 					},
 				},
 				Middleware: []Middleware{
-					HandlerMiddlewareFunc(func(ctx context.Context, record slog.Record, next slog.Handler) error {
+					SimpleMiddlewareFn(func(ctx context.Context, record slog.Record, next slog.Handler) error {
 						return next.Handle(ctx, record)
 					}),
 				},
@@ -363,7 +363,7 @@ func TestHandlerOptions_Clone(t *testing.T) {
 			tC.opts.ReplaceAttrs = append(tC.opts.ReplaceAttrs, func(_ []string, _ slog.Attr) slog.Attr {
 				return slog.Attr{}
 			})
-			tC.opts.Middleware = append(tC.opts.Middleware, HandlerMiddlewareFunc(func(_ context.Context, _ slog.Record, _ slog.Handler) error {
+			tC.opts.Middleware = append(tC.opts.Middleware, SimpleMiddlewareFn(func(_ context.Context, _ slog.Record, _ slog.Handler) error {
 				return nil
 			}))
 			tC.opts.HandlerFn = nil

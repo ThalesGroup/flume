@@ -210,20 +210,25 @@ type Middleware interface {
 	Apply(slog.Handler) slog.Handler
 }
 
-type MiddlewareFunc func(slog.Handler) slog.Handler
+// MiddlewareFn adapts a function to the Middleware interface.
+type MiddlewareFn func(slog.Handler) slog.Handler
 
-func (f MiddlewareFunc) Apply(h slog.Handler) slog.Handler {
+func (f MiddlewareFn) Apply(h slog.Handler) slog.Handler {
 	return f(h)
 }
 
-func (f HandlerMiddlewareFunc) Apply(h slog.Handler) slog.Handler {
+// Apply implements Middleware
+func (f SimpleMiddlewareFn) Apply(h slog.Handler) slog.Handler {
 	return &middlewareHandler{
 		next:       h,
 		middleware: f,
 	}
 }
 
-type HandlerMiddlewareFunc func(ctx context.Context, record slog.Record, next slog.Handler) error
+// SimpleMiddlewareFn defines a simple middleware function which intercepts
+// *slog.Handler.Handle() calls.  SimpleMiddlewareFn adapts this to the Middleware
+// interface.
+type SimpleMiddlewareFn func(ctx context.Context, record slog.Record, next slog.Handler) error
 
 type middlewareHandler struct {
 	next       slog.Handler
