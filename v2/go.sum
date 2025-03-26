@@ -1,5 +1,5 @@
-github.com/ansel1/console-slog v0.6.0-pre h1:YAtg8PPc5YImtdKVOS17FOwbx9ugMGi7y7VJVPcvKrM=
-github.com/ansel1/console-slog v0.6.0-pre/go.mod h1:xWmSASVcbXogu+ONwkGc2DNymm2ejW6Rijhq2XVTN/4=
+github.com/ansel1/console-slog v0.6.0 h1:3GcDUUxLrHs2gqe+Vj4x6RrqFc/Odb3qiKnuciEphWI=
+github.com/ansel1/console-slog v0.6.0/go.mod h1:xWmSASVcbXogu+ONwkGc2DNymm2ejW6Rijhq2XVTN/4=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
