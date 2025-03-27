@@ -1,7 +1,27 @@
 Flume [![GoDoc](https://godoc.org/github.com/ThalesGroup/flume?status.png)](https://godoc.org/github.com/ThalesGroup/flume/v2) [![Go Report Card](https://goreportcard.com/badge/github.com/ThalesGroup/flume)](https://goreportcard.com/report/ThalesGroup/flume) [![Build](https://github.com/ThalesGroup/flume/workflows/Build/badge.svg)](https://github.com/ThalesGroup/flume/actions?query=branch%3Amaster+workflow%3ABuild+)
 =====
 
-Flume is a handler for the log/slog package.  A flume handler has a couple nifty capabilities:
+Flume is a handler for the log/slog package.  
+
+# Usage
+
+    go get github.com/ThalesGroup/flume/v2
+
+Example:
+
+    import github.com/ThalesGroup/flume/v2
+
+    // configure logging from the environment, e.g.:
+    // FLUME={"level":"INFO", "levels":{"http":"DEBUG"}, "handler":"json"}
+    flume.MustConfigFromEnv()
+
+    l := flume.New("http")  // equivalent to slog.New(flume.Default()).With(flume.LoggerKey, "http")
+    l.Debug("hello world")
+
+
+# Features
+
+A flume handler has a couple nifty capabilities:
 
 - It enables different levels based on the value of a special `logger` attribute in the record.
   For example, the default level might be INFO, but records with the attribute `logger=http` can be enabled at the debug level.  (The attribute name is configurable).
