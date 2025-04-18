@@ -84,16 +84,6 @@ type ReplaceAttrsMiddleware struct {
 	replaceAttr func([]string, slog.Attr) slog.Attr
 }
 
-func (r *ReplaceAttrsMiddleware) clone(next slog.Handler) *ReplaceAttrsMiddleware {
-	return &ReplaceAttrsMiddleware{
-		next:         next,
-		groups:       slices.Clip(r.groups),
-		replaceAttr:  r.replaceAttr,
-		SkipRecord:   r.SkipRecord,
-		SkipBuiltins: r.SkipBuiltins,
-	}
-}
-
 func (r *ReplaceAttrsMiddleware) Apply(next slog.Handler) slog.Handler {
 	return r.clone(next)
 }
@@ -128,6 +118,35 @@ func (r *ReplaceAttrsMiddleware) Handle(ctx context.Context, record slog.Record)
 	return r.next.Handle(ctx, newRecord)
 }
 
+func (r *ReplaceAttrsMiddleware) WithAttrs(attrs []slog.Attr) slog.Handler {
+	if r.replaceAttr == nil {
+		return r.clone(r.next.WithAttrs(attrs))
+	}
+
+	attrs = r.applyReplaceAttr(r.groups, attrs)
+	if len(attrs) == 0 {
+		// all attrs resolved to empty, so no-op
+		return r
+	}
+	return r.clone(r.next.WithAttrs(attrs))
+}
+
+func (r *ReplaceAttrsMiddleware) WithGroup(name string) slog.Handler {
+	r = r.clone(r.next.WithGroup(name))
+	r.groups = append(r.groups, name)
+	return r
+}
+
+func (r *ReplaceAttrsMiddleware) clone(next slog.Handler) *ReplaceAttrsMiddleware {
+	return &ReplaceAttrsMiddleware{
+		next:         next,
+		groups:       slices.Clip(r.groups),
+		replaceAttr:  r.replaceAttr,
+		SkipRecord:   r.SkipRecord,
+		SkipBuiltins: r.SkipBuiltins,
+	}
+}
+
 func (r *ReplaceAttrsMiddleware) applyToMessage(msg string) string {
 	attr := r.replaceAttr(nil, slog.String(slog.MessageKey, msg))
 	return attr.Value.String()
@@ -155,25 +174,6 @@ func (r *ReplaceAttrsMiddleware) applyToLevel(l slog.Level) slog.Level {
 		}
 	}
 	return l
-}
-
-func (r *ReplaceAttrsMiddleware) WithAttrs(attrs []slog.Attr) slog.Handler {
-	if r.replaceAttr == nil {
-		return r.clone(r.next.WithAttrs(attrs))
-	}
-
-	attrs = r.applyReplaceAttr(r.groups, attrs)
-	if len(attrs) == 0 {
-		// all attrs resolved to empty, so no-op
-		return r
-	}
-	return r.clone(r.next.WithAttrs(attrs))
-}
-
-func (r *ReplaceAttrsMiddleware) WithGroup(name string) slog.Handler {
-	r = r.clone(r.next.WithGroup(name))
-	r.groups = append(r.groups, name)
-	return r
 }
 
 func (r *ReplaceAttrsMiddleware) applyReplaceAttrRecurse(groups []string, attr slog.Attr) slog.Attr {

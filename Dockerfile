@@ -1,4 +1,4 @@
-FROM golang:1.14-alpine
+FROM golang:1.19-alpine
 
 RUN apk --no-cache add make bash fish build-base
 

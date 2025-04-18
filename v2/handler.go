@@ -55,6 +55,14 @@ func (o *HandlerOptions) handler(name string, w io.Writer) slog.Handler {
 	return sink
 }
 
+type Handler struct {
+	opts      *HandlerOptions
+	w         io.Writer
+	mutex     sync.Mutex
+	handler   *innerHandler
+	delegates map[string]*atomic.Pointer[slog.Handler]
+}
+
 func NewHandler(w io.Writer, opts *HandlerOptions) *Handler {
 	h := &Handler{
 		delegates: map[string]*atomic.Pointer[slog.Handler]{},
@@ -67,14 +75,6 @@ func NewHandler(w io.Writer, opts *HandlerOptions) *Handler {
 	}
 
 	return h
-}
-
-type Handler struct {
-	opts      *HandlerOptions
-	w         io.Writer
-	mutex     sync.Mutex
-	handler   *innerHandler
-	delegates map[string]*atomic.Pointer[slog.Handler]
 }
 
 func (h *Handler) Enabled(ctx context.Context, lvl slog.Level) bool {

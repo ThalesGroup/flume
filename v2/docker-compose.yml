@@ -1,5 +1,7 @@
 services:
   builder:
+    cap_drop:
+      - ALL
     build:
       context: .
     volumes:

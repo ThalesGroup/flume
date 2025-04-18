@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
+	"testing"
+
 	"github.com/ansel1/merry"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap/zapcore"
-	"io/ioutil"
-	"testing"
 )
 
 var suppressErrVerboseOnInfoHook = func(entry *CheckedEntry, fields []Field) []Field {
@@ -72,7 +73,7 @@ func BenchmarkNoHook(b *testing.B) {
 	b.ReportAllocs()
 	factory := NewFactory()
 	factory.SetDefaultLevel(DebugLevel)
-	factory.SetOut(ioutil.Discard)
+	factory.SetOut(io.Discard)
 	logger := factory.NewLogger("")
 	err := merry.New("boom")
 	for i := 0; i < b.N; i++ {
@@ -84,7 +85,7 @@ func BenchmarkHookNoop(b *testing.B) {
 	b.ReportAllocs()
 	factory := NewFactory()
 	factory.SetDefaultLevel(DebugLevel)
-	factory.SetOut(ioutil.Discard)
+	factory.SetOut(io.Discard)
 	logger := factory.NewLogger("")
 	err := merry.New("boom")
 	factory.Hooks(suppressErrVerboseOnInfoHook)
@@ -97,7 +98,7 @@ func BenchmarkHook(b *testing.B) {
 	b.ReportAllocs()
 	factory := NewFactory()
 	factory.SetDefaultLevel(DebugLevel)
-	factory.SetOut(ioutil.Discard)
+	factory.SetOut(io.Discard)
 	logger := factory.NewLogger("")
 	err := merry.New("boom")
 	factory.Hooks(suppressErrVerboseOnInfoHook)

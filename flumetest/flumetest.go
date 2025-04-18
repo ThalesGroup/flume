@@ -19,13 +19,14 @@ package flumetest
 import (
 	"bytes"
 	"flag"
-	"github.com/gemalto/flume"
-	"io/ioutil"
+	"io"
 	"os"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/gemalto/flume"
 )
 
 var Verbose bool
@@ -54,7 +55,7 @@ func init() {
 // Uses a colorized console encoder with abbreviated times.
 func SetDefaults() error {
 	if !Verbose {
-		flume.SetOut(ioutil.Discard)
+		flume.SetOut(io.Discard)
 	}
 
 	if ConfigString != "" {
