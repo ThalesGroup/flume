@@ -385,14 +385,14 @@ func assertHandlerOptionsEqual(t *testing.T, want, got HandlerOptions, sample st
 
 	if want.ReplaceAttrs != nil {
 		assert.NotNil(t, got.ReplaceAttrs)
-		assert.Equal(t, len(want.ReplaceAttrs), len(got.ReplaceAttrs))
+		assert.Len(t, got.ReplaceAttrs, len(want.ReplaceAttrs))
 	} else {
 		assert.Empty(t, got.ReplaceAttrs)
 	}
 
 	if want.Middleware != nil {
 		assert.NotNil(t, got.Middleware)
-		assert.Equal(t, len(want.Middleware), len(got.Middleware))
+		assert.Len(t, got.Middleware, len(want.Middleware))
 	} else {
 		assert.Empty(t, got.Middleware)
 	}

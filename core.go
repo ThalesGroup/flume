@@ -95,8 +95,8 @@ func (l *Core) log(lvl Level, template string, fmtArgs, context []interface{}) b
 	// Thread the error output through to the CheckedEntry.
 	ce.ErrorOutput = c.errorOutput
 	if c.addCaller {
-		ce.Entry.Caller = zapcore.NewEntryCaller(runtime.Caller(l.callerSkip + callerSkipOffset))
-		if !ce.Entry.Caller.Defined {
+		ce.Caller = zapcore.NewEntryCaller(runtime.Caller(l.callerSkip + callerSkipOffset))
+		if !ce.Caller.Defined {
 			_, _ = fmt.Fprintf(c.errorOutput, "%v Logger.check error: failed to get caller\n", time.Now().UTC())
 			_ = ce.ErrorOutput.Sync()
 		}
