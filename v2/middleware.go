@@ -53,10 +53,10 @@ import (
 //   - slog.SourceKey: skipped
 //   - slog.MessageKey: ignores changes to the key name.  If the returned value is empty, the message will
 //     be set to the value `<nil>`.  Non-string values are coerced to a string like `fmt.Print`
-//   - slog.TimeKey: ignores changes to the key name.  If the value returned is not empty or a time.Time{}, it is
-//     ignored.
-//   - slog.LevelKey: ignores changes to the key name.  If the value returned is not empty or a slog.Level, it is
-//     ignored.
+//   - slog.TimeKey: ignores changes to the key name.  The slog.Value returned must either be empty, or
+//     a slog.KindTime.  Other values will be ignored.
+//   - slog.LevelKey: ignores changes to the key name.  The slog.Value returned must either be empty, or
+//     be a slog.KindAny containing a slog.Level value.  Other values will be ignored.
 //
 // The middleware may be further configured to skip processing built-in attributes, or skipping processing
 // for particular records.
@@ -168,7 +168,7 @@ func (r *ReplaceAttrsMiddleware) applyToLevel(l slog.Level) slog.Level {
 	if attr.Value.Equal(slog.Value{}) {
 		return slog.LevelInfo
 	}
-	if attr.Value.Kind() == slog.KindAny && attr.Key == slog.LevelKey {
+	if attr.Value.Kind() == slog.KindAny {
 		if lvl, ok := attr.Value.Any().(slog.Level); ok {
 			return lvl
 		}
