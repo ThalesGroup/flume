@@ -117,7 +117,7 @@ func (h *Handler) HandlerOptions() *HandlerOptions {
 func (h *Handler) SetHandlerOptions(opts *HandlerOptions) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
-	h.opts = opts
+	h.opts = opts.Clone()
 	h.reset()
 }
 
