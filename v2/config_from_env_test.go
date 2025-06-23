@@ -241,10 +241,9 @@ func TestBuiltInHandlers(t *testing.T) {
 		TermColorHandler: styled("blue    ", theme.Header) + " " +
 			styled("|", theme.Header) + styled("INF", theme.LevelInfo) + styled("|", theme.Header) + " " +
 			styled("hi", theme.Message) + "\n",
-		TextHandler:    "level=INFO msg=hi logger=blue\n",
-		JSONHandler:    `{"level":"INFO","msg":"hi","logger":"blue"}` + "\n",
-		ConsoleHandler: "level=INFO msg=hi logger=blue\n",
-		NoopHandler:    "",
+		TextHandler: "level=INFO msg=hi logger=blue\n",
+		JSONHandler: `{"level":"INFO","msg":"hi","logger":"blue"}` + "\n",
+		NoopHandler: "",
 	}
 	for name, want := range builtIns {
 		handlerFn := LookupHandlerFn(name)

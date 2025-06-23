@@ -15,7 +15,6 @@ import (
 const (
 	TextHandler      = "text"
 	JSONHandler      = "json"
-	ConsoleHandler   = "console"
 	TermHandler      = "term"
 	TermColorHandler = "term-color"
 	NoopHandler      = "noop"
@@ -101,12 +100,9 @@ var initHandlerFnsOnce sync.Once
 
 func resetBuiltInHandlerFns() {
 	handlerFns = sync.Map{}
-	textHandlerFn := func(_ string, w io.Writer, opts *slog.HandlerOptions) slog.Handler {
+	registerHandlerFn(TextHandler, func(_ string, w io.Writer, opts *slog.HandlerOptions) slog.Handler {
 		return slog.NewTextHandler(w, opts)
-	}
-	registerHandlerFn(TextHandler, textHandlerFn)
-	// for v1 compatibility, "console" is an alias for "text"
-	registerHandlerFn(ConsoleHandler, textHandlerFn)
+	})
 	registerHandlerFn(JSONHandler, func(_ string, w io.Writer, opts *slog.HandlerOptions) slog.Handler {
 		return slog.NewJSONHandler(w, opts)
 	})

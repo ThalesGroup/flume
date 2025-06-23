@@ -16,6 +16,7 @@ import (
 var (
 	ErrInvalidLevelsValue = errors.New("invalid levels value")
 	ErrInvalidLevelType   = errors.New("levels must be a string or int value")
+	ErrUnregisteredHandler = errors.New("unregistered handler")
 )
 
 // HandlerFn is a constructor for slog handlers.  The function should return a slog.Handler
@@ -144,10 +145,22 @@ func (o *HandlerOptions) UnmarshalJSON(bytes []byte) error {
 	// an alias for "handler"
 	if s.Handler == "" {
 		s.Handler = s.Encoding
+		// for backward compatibility with v1, add aliases
+		// for the other values of "encoding".
+		switch s.Handler {
+		case "ltsv":
+			s.Handler = TextHandler
+		case "console":
+			s.Handler = TermHandler
+		}
 	}
 
 	if s.Handler != "" {
-		opts.HandlerFn = LookupHandlerFn(s.Handler)
+		fn := LookupHandlerFn(s.Handler)
+		if fn == nil {
+			return fmt.Errorf("%w: '%v'", ErrUnregisteredHandler, s.Handler)
+		}
+		opts.HandlerFn = fn
 	}
 
 	*o = *opts
