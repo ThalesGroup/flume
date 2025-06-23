@@ -133,7 +133,7 @@ func TestStart(t *testing.T) {
 			failTest: true,
 			expect:   "",
 			testFunc: func(tb testingTB) {
-				Disabled = true
+				Disable = true
 				Start(tb)
 
 				log.Info("Hi", "color", "red")
@@ -167,10 +167,10 @@ func TestStart(t *testing.T) {
 			}
 
 			// restore the original values after the test
-			oldDisabled := Disabled
+			oldDisabled := Disable
 			oldVerbose := Verbose
 			defer func() {
-				Disabled = oldDisabled
+				Disable = oldDisabled
 				Verbose = oldVerbose
 			}()
 
