@@ -14,8 +14,8 @@ import (
 
 // Define static error variables
 var (
-	ErrInvalidLevelsValue = errors.New("invalid levels value")
-	ErrInvalidLevelType   = errors.New("levels must be a string or int value")
+	ErrInvalidLevels       = errors.New("invalid levels value")
+	ErrInvalidLevel        = errors.New("invalid log level")
 	ErrUnregisteredHandler = errors.New("unregistered handler")
 )
 
@@ -120,7 +120,7 @@ func (o *HandlerOptions) UnmarshalJSON(bytes []byte) error {
 			}
 		}
 	default:
-		return fmt.Errorf("%w: %v", ErrInvalidLevelsValue, s.Levels)
+		return fmt.Errorf("%w '%v': must be a levels string or map", ErrInvalidLevels, s.Levels)
 	}
 
 	// for backward compatibility with flumev1, if there is a level named "*"
@@ -202,7 +202,7 @@ func parseLevel(v any) (slog.Level, error) {
 		}
 		return LevelOff, nil
 	default:
-		return 0, ErrInvalidLevelType
+		return 0, fmt.Errorf("%w: should be string, number, or bool", ErrInvalidLevel)
 	}
 
 	// allow raw integer values for level
@@ -235,7 +235,7 @@ func parseLevel(v any) (slog.Level, error) {
 	var l slog.Level
 	err := l.UnmarshalText([]byte(s))
 	if err != nil {
-		return 0, fmt.Errorf("invalid log level '%v': %w", v, err)
+		return 0, fmt.Errorf("%w '%v': %w", ErrInvalidLevel, v, err)
 	}
 	return l, nil
 }
@@ -299,7 +299,7 @@ func parseLevels(s string) (map[string]slog.Leveler, error) {
 		}
 	}
 	if errs != nil {
-		return nil, fmt.Errorf("invalid log levels: %w", errs)
+		return nil, fmt.Errorf("%w '%v': %w", ErrInvalidLevels, s, errs)
 	}
 	return m, nil
 }

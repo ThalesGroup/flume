@@ -56,6 +56,7 @@ func ConfigFromEnv(envvars ...string) error {
 	return nil
 }
 
+// MustConfigFromEnv is like ConfigFromEnv, but panics on error.
 func MustConfigFromEnv(envvars ...string) {
 	err := ConfigFromEnv(envvars...)
 	if err != nil {
@@ -63,6 +64,53 @@ func MustConfigFromEnv(envvars ...string) {
 	}
 }
 
+// UnmarshalEnv reads handler options from an environment variable.  The first environment
+// variable in the list with a non-empty value will be unmarshaled into the options arg.
+//
+// The first argument must not be nil.
+//
+// The value of the environment variable can be either json, or a levels string:
+//
+//	FLUME={"level":"inf"}            // json
+//	FLUME=*=inf                      // levels string
+//
+// This is the full schema for the json encoding:
+//
+//	{
+//	  "development": <bool>,
+//	  "handler": <str>,       // looks up HandlerFn using LookupHandlerFn()
+//	  "encoding": <str>,      // v1 alias for "handler"; if both set, "handler" wins
+//	  "level": <str>,         // e.g. "INF", "INFO", "INF-1"
+//	  "levels": <str or obj>, // either a levels string, or an object where the keys
+//	                          // are logger names, and the values are levels (in the same
+//	                          // format as the "level" property)
+//	  "addSource": <bool>,
+//	  "addCaller": <bool>,    // v1 alias for "addSource"; if both set, "addSource" wins
+//	}
+//
+// Level strings are in the form:
+//
+//		 Levels    = Directive {"," Directive} .
+//	  Directive = logger | "-" logger | logger "=" Level | "*" .
+//	  Level     = LevelName [ "-" offset ] | int .
+//	  LevelName = "DEBUG" | "DBG" | "INFO" | "INF" |
+//	              "WARN" | "WRN" | "ERROR" | "ERR" |
+//	              "ALL" | "OFF" | ""
+//
+// Where `logger` is the name of a logger.  "*" sets the default level.  LevelName is
+// case-insensitive.
+//
+// Example:
+//
+//	*=INF,http,-sql,boot=DEBUG,authz=ERR,authn=INF+1,keys=4
+//
+// - sets default level to info
+// - enables all log levels on the http logger
+// - disables all logging from the sql logger
+// - sets the boot logger to debug
+// - sets the authz logger to ERR
+// - sets the authn logger to level 1 (slog.LevelInfo + 1)
+// - sets the keys logger to WARN (slog.LevelWarn == 4)
 func UnmarshalEnv(o *HandlerOptions, envvars ...string) error {
 	for _, v := range envvars {
 		configString := os.Getenv(v)
@@ -125,15 +173,31 @@ func initHandlerFns() {
 	})
 }
 
+// LookupHandlerFn looks for a handler registered with the given name.  Registered
+// handlers are stored in an internal, package level map, which is initialized with some
+// built-in handlers.  Handlers can be added or replaced via RegisterHandlerFn.
+//
+// Returns nil if name is not found.
+//
+// LookupHandlerFn is used when unmarshaling HandlerOptions from json, to resolve the
+// "handler" property to a handler function.
 func LookupHandlerFn(name string) HandlerFn {
 	initHandlerFns()
 	v, ok := handlerFns.Load(name)
 	if !ok {
 		return nil
 	}
-	// fn := v.(func(string, io.Writer, *slog.HandlerOptions) slog.Handler) //nolint:forcetypeassert // if it's not a HandlerFn, we should panic
 	fn := v.(HandlerFn) //nolint:forcetypeassert // if it's not a HandlerFn, we should panic
 	return fn
+}
+
+// RegisterHandlerFn registers a handler with a name.  The handler can be looked up
+// with LookupHandlerFn.  If a handler function was already registered with the given
+// name, the old handler function is replaced.  Built-in handler functions can also
+// be replaced in this manner.
+func RegisterHandlerFn(name string, fn HandlerFn) {
+	initHandlerFns()
+	registerHandlerFn(name, fn)
 }
 
 // JSONHandlerFn is shorthand for LookupHandlerFn("json").  Will never be nil.
@@ -159,11 +223,6 @@ func TermColorHandlerFn() HandlerFn {
 // NoopHandlerFn is shorthand for LookupHandlerFn("noop").  Will never be nil.
 func NoopHandlerFn() HandlerFn {
 	return LookupHandlerFn(NoopHandler)
-}
-
-func RegisterHandlerFn(name string, fn HandlerFn) {
-	initHandlerFns()
-	registerHandlerFn(name, fn)
 }
 
 func registerHandlerFn(name string, fn HandlerFn) {

@@ -66,7 +66,7 @@ func TestUnmarshalEnv(t *testing.T) {
 				"FLUME": `blue=RED`,
 			},
 			envvars:     DefaultConfigEnvVars,
-			expectError: "parsing levels string from environment variable FLUME: invalid log levels: invalid log level 'RED': slog: level string \"RED\": unknown name",
+			expectError: "parsing levels string from environment variable FLUME: invalid levels value 'blue=RED': invalid log level 'RED': slog: level string \"RED\": unknown name",
 		},
 		{
 			name: "parse levels string",

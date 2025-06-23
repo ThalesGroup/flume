@@ -71,7 +71,7 @@ func TestParseLevel_error(t *testing.T) {
 		{
 			name:      "map",
 			input:     map[string]string{},
-			wantError: "levels must be a string or int value",
+			wantError: "invalid log level: should be string, number, or bool",
 		},
 		{
 			name:      "invalid level modifier",
@@ -88,7 +88,7 @@ func TestParseLevel_error(t *testing.T) {
 	}
 }
 
-func TestLevelsMarshaling(t *testing.T) {
+func TestLevels_MarshalText(t *testing.T) {
 	tests := []struct {
 		name     string
 		levels   Levels
@@ -211,11 +211,12 @@ func TestLevels_UnmarshalText(t *testing.T) {
 func TestHandlerOptions_UnmarshalJSON(t *testing.T) {
 	theme := console.NewDefaultTheme()
 	tests := []struct {
-		name     string
-		confJSON string
-		want     string
-		expected HandlerOptions
-		wantErr  string
+		name      string
+		confJSON  string
+		want      string
+		expected  HandlerOptions
+		wantErr   string
+		wantErrIs error
 	}{
 		{
 			name:     "defaults",
@@ -280,11 +281,12 @@ func TestHandlerOptions_UnmarshalJSON(t *testing.T) {
 			},
 		},
 		{
-			name:     "encoding as alias for defaultSink",
+			name:     "encoding as alias for handler",
 			confJSON: `{"encoding":"text"}`,
 			expected: HandlerOptions{
 				HandlerFn: TextHandlerFn(),
 			},
+			want: "level=INFO msg=hi\n",
 		},
 		{
 			name:     "handler has higher precedence than encoding",
@@ -292,6 +294,23 @@ func TestHandlerOptions_UnmarshalJSON(t *testing.T) {
 			expected: HandlerOptions{
 				HandlerFn: TextHandlerFn(),
 			},
+			want: "level=INFO msg=hi\n",
+		},
+		{
+			name:     "encoding supports ltsv as alias for text",
+			confJSON: `{"encoding":"ltsv"}`,
+			expected: HandlerOptions{
+				HandlerFn: TextHandlerFn(),
+			},
+			want: "level=INFO msg=hi\n",
+		},
+		{
+			name:     "encoding supports console as alias for term",
+			confJSON: `{"encoding":"console"}`,
+			expected: HandlerOptions{
+				HandlerFn: TermHandlerFn(),
+			},
+			want: "|INF| hi\n",
 		},
 		{
 			name:     "addCaller as alias for addSource",
@@ -324,29 +343,62 @@ func TestHandlerOptions_UnmarshalJSON(t *testing.T) {
 			want: `{"level":"INFO","msg":"hi"}` + "\n",
 		},
 		{
+			name:     "term handler",
+			confJSON: `{"handler":"term"}`,
+			expected: HandlerOptions{
+				HandlerFn: TermHandlerFn(),
+			},
+			want: "|INF| hi\n",
+		},
+		{
+			name:     "term color handler",
+			confJSON: `{"handler":"term-color"}`,
+			expected: HandlerOptions{
+				HandlerFn: TermHandlerFn(),
+			},
+			want: "\x1b[2;1m|\x1b[0m\x1b[36mINF\x1b[0m\x1b[2;1m|\x1b[0m \x1b[1mhi\x1b[0m\n",
+		},
+		{
+			name:     "noop handler",
+			confJSON: `{"handler":"noop"}`,
+			expected: HandlerOptions{
+				HandlerFn: NoopHandlerFn(),
+			},
+		},
+		{
 			name:     "invalid JSON",
 			confJSON: `{out:"stderr"}`,
 			wantErr:  "invalid character 'o' looking for beginning of object key string",
 		},
 		{
-			name:     "invalid level",
-			confJSON: `{"level":"INVALID"}`,
-			wantErr:  "invalid log level 'INVALID': slog: level string \"INVALID\": unknown name",
+			name:      "invalid level",
+			confJSON:  `{"level":"INVALID"}`,
+			wantErr:   "invalid log level 'INVALID': slog: level string \"INVALID\": unknown name",
+			wantErrIs: ErrInvalidLevel,
 		},
 		{
-			name:     "invalid levels string",
-			confJSON: `{"levels":"*=INVALID"}`,
-			wantErr:  "invalid log level 'INVALID': slog: level string \"INVALID\": unknown name",
+			name:      "invalid levels string",
+			confJSON:  `{"levels":"*=INVALID"}`,
+			wantErr:   "invalid levels value '*=INVALID': invalid log level 'INVALID': slog: level string \"INVALID\": unknown name",
+			wantErrIs: ErrInvalidLevels,
 		},
 		{
-			name:     "invalid levels map",
-			confJSON: `{"levels":{"*":"INVALID"}}`,
-			wantErr:  "invalid log level 'INVALID': slog: level string \"INVALID\": unknown name",
+			name:      "invalid levels map",
+			confJSON:  `{"levels":{"*":"INVALID"}}`,
+			wantErr:   "invalid log level 'INVALID': slog: level string \"INVALID\": unknown name",
+			wantErrIs: ErrInvalidLevel,
 		},
 		{
-			name:     "invalid levels type",
-			confJSON: `{"levels":1}`,
-			wantErr:  "invalid levels value: 1",
+			name:      "invalid levels type",
+			confJSON:  `{"levels":1}`,
+			wantErr:   "invalid levels value '1': must be a levels string or map",
+			wantErrIs: ErrInvalidLevels,
+		},
+		{
+			name:      "unregistered handler",
+			confJSON:  `{"handler":"notfound"}`,
+			wantErr:   "unregistered handler: 'notfound'",
+			wantErrIs: ErrUnregisteredHandler,
 		},
 	}
 
@@ -354,8 +406,13 @@ func TestHandlerOptions_UnmarshalJSON(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			var opts HandlerOptions
 			err := json.Unmarshal([]byte(test.confJSON), &opts)
-			if test.wantErr != "" {
-				assert.Error(t, err, test.wantErr)
+			if test.wantErr != "" || test.wantErrIs != nil {
+				if test.wantErrIs != nil {
+					assert.ErrorIs(t, err, test.wantErrIs) //nolint:testifylint
+				}
+				if test.wantErr != "" {
+					assert.EqualError(t, err, test.wantErr) //nolint:testifylint
+				}
 				return
 			}
 
