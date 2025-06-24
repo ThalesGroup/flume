@@ -122,7 +122,7 @@ func TestStart(t *testing.T) {
 			failTest: false,
 			expect:   "color=red",
 			testFunc: func(tb testingTB) {
-				Verbose = true
+				SetVerbose(true)
 				Start(tb)
 
 				log.Info("Hi", "color", "red")
@@ -133,7 +133,7 @@ func TestStart(t *testing.T) {
 			failTest: true,
 			expect:   "",
 			testFunc: func(tb testingTB) {
-				Disable = true
+				SetDisabled(true)
 				Start(tb)
 
 				log.Info("Hi", "color", "red")
@@ -167,11 +167,11 @@ func TestStart(t *testing.T) {
 			}
 
 			// restore the original values after the test
-			oldDisabled := Disable
-			oldVerbose := Verbose
+			oldDisabled := Disabled()
+			oldVerbose := Verbose()
 			defer func() {
-				Disable = oldDisabled
-				Verbose = oldVerbose
+				SetDisabled(oldDisabled)
+				SetVerbose(oldVerbose)
 			}()
 
 			m := mockT{

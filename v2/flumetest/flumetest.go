@@ -26,17 +26,53 @@ import (
 	"github.com/ThalesGroup/flume/v2"
 )
 
-var Disable bool
-var Verbose bool
+var (
+	disabledPtr *bool
+	verbosePtr  *bool
 
-//nolint:gochecknoinits
-func init() {
-	if s, ok := os.LookupEnv("FLUMETEST_DISABLE"); ok {
-		Disable, _ = strconv.ParseBool(s)
-	} else {
-		Disable, _ = strconv.ParseBool(os.Getenv("FLUME_TEST_DISABLE"))
-	}
-	Verbose, _ = strconv.ParseBool(os.Getenv("FLUMETEST_VERBOSE"))
+	initializeOnce sync.Once
+)
+
+func Disabled() bool {
+	initialize()
+	return disabledPtr != nil && *disabledPtr
+}
+
+func SetDisabled(disabled bool) {
+	*disabledPtr = disabled
+}
+
+func Verbose() bool {
+	initialize()
+	return verbosePtr != nil && *verbosePtr
+}
+
+func SetVerbose(verbose bool) {
+	*verbosePtr = verbose
+}
+
+// do not read the environment in init().  Using init() to the read the environment
+// doesn't give consumers a chance to load .env files first, or otherwise set up
+// the environment.
+func initialize() {
+	initializeOnce.Do(func() {
+		// only read these from the env if they weren't already set by from the command
+		// line args
+		if disabledPtr == nil {
+			var b bool
+			if s, ok := os.LookupEnv("FLUMETEST_DISABLE"); ok {
+				b, _ = strconv.ParseBool(s)
+			} else {
+				b, _ = strconv.ParseBool(os.Getenv("FLUME_TEST_DISABLE"))
+			}
+			disabledPtr = &b
+		}
+		if verbosePtr == nil {
+			var b bool
+			b, _ = strconv.ParseBool(os.Getenv("FLUMETEST_VERBOSE"))
+			verbosePtr = &b
+		}
+	})
 }
 
 // RegisterFlags registers command line flag options related flume:
@@ -48,8 +84,8 @@ func init() {
 //
 // If you wish to use these flags in your tests, you should call this in TestMain().
 func RegisterFlags() {
-	flag.BoolVar(&Disable, "disable-flumetest", false, "Disables all flumetest features: logging will happen as normal")
-	flag.BoolVar(&Verbose, "vv", false, "During tests, forwards all logs immediately to t.Log()")
+	disabledPtr = flag.Bool("disable-flumetest", false, "Disables all flumetest features: logging will happen as normal")
+	verbosePtr = flag.Bool("vv", false, "During tests, forwards all logs immediately to t.Log()")
 }
 
 // Start captures all logs written during the test.  If the test succeeds, the
@@ -70,13 +106,13 @@ func RegisterFlags() {
 // useful to flush ear logs from setup code, then starting a new buffer for the
 // body of the test.
 func Start(t testingTB) func() {
-	if Disable {
+	if Disabled() {
 		// no op
 		return func() {}
 	}
 
 	revertToSnapshot := Snapshot(flume.Default())
-	if Verbose {
+	if Verbose() {
 		t.Cleanup(revertToSnapshot)
 		flume.Default().SetOut(flume.LogFuncWriter(t.Log, true))
 		return revertToSnapshot
