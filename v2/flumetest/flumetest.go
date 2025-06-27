@@ -51,7 +51,7 @@ func SetVerbose(verbose bool) {
 	*verbosePtr = verbose
 }
 
-// do not read the environment in init().  Using init() to the read the environment
+// do not read the environment in init().  Using init() to read the environment
 // doesn't give consumers a chance to load .env files first, or otherwise set up
 // the environment.
 func initialize() {
