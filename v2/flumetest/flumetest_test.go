@@ -22,10 +22,11 @@ func init() {
 }
 
 type mockT struct {
+	sync.Mutex
+
 	failed   bool
 	logs     strings.Builder
 	cleanups []func()
-	sync.Mutex
 }
 
 func (m *mockT) Cleanup(f func()) {
@@ -38,12 +39,14 @@ func (m *mockT) Cleanup(f func()) {
 func (m *mockT) Failed() bool {
 	m.Lock()
 	defer m.Unlock()
+
 	return m.failed
 }
 
-func (m *mockT) Log(args ...interface{}) {
+func (m *mockT) Log(args ...any) {
 	m.Lock()
 	defer m.Unlock()
+
 	_, _ = fmt.Fprint(&m.logs, args...)
 }
 
@@ -101,8 +104,10 @@ func TestStart(t *testing.T) {
 				// when run with the race detector, this would cause a race
 				// unless the log buffer is synchronized
 				barrier, stop := make(chan struct{}, 1), make(chan struct{})
+
 				go func() {
 					barrier <- struct{}{}
+
 					for {
 						select {
 						case <-stop:
@@ -112,8 +117,10 @@ func TestStart(t *testing.T) {
 						}
 					}
 				}()
+
 				<-barrier
 				cleanup()
+
 				stop <- struct{}{}
 			},
 		},
@@ -169,6 +176,7 @@ func TestStart(t *testing.T) {
 			// restore the original values after the test
 			oldDisabled := Disabled()
 			oldVerbose := Verbose()
+
 			defer func() {
 				SetDisabled(oldDisabled)
 				SetVerbose(oldVerbose)

@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go: [ '^1.14', 'oldstable', 'stable' ]
+        go: [ '^1.21', 'oldstable', 'stable' ]
     steps:
     - uses: actions/setup-go@v5
       with:

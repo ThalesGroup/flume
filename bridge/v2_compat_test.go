@@ -12,35 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// resetGlobalState resets all global state modified by the bridge functions
-func resetGlobalState(
-	origV1AddCaller bool,
-	origV2Opts *flumev2.HandlerOptions,
-	origSlogDefault *slog.Logger,
-) {
-	// Reset flumev1 state
-	flumev1.DefaultFactory().SetNewCoreFn(nil)
-	flumev1.SetAddCaller(origV1AddCaller)
-
-	// Reset flumev2 state
-	flumev2.Default().SetHandlerOptions(origV2Opts)
-
-	// Reset slog default
-	slog.SetDefault(origSlogDefault)
-}
-
-// saveGlobalState captures the current global state before running tests
-func saveGlobalState() (
-	origV1AddCaller bool,
-	origV2Opts *flumev2.HandlerOptions,
-	origSlogDefault *slog.Logger,
-) {
-	origV1AddCaller = flumev1.DefaultFactory().AddCaller()
-	origV2Opts = flumev2.Default().HandlerOptions()
-	origSlogDefault = slog.Default()
-	return
-}
-
 // testConfig resets the global v1 and v2 logger configuration to a common baseline state,
 // then calls flumev1 and flumev2 ConfigFromEnv() using the given config value.
 // After the test completes, the original state of the global logger configuration is restored.

@@ -75,9 +75,9 @@ import (
 // FlumeV1Logger describes the most commonly used parts of the flumev1 Logger API.  In most cases, references
 // to flume/yugolog.Logger could be replaced with this interface without breaking callers.
 type FlumeV1Logger interface {
-	Debug(msg string, args ...interface{})
-	Info(msg string, args ...interface{})
-	Error(msg string, args ...interface{})
+	Debug(msg string, args ...any)
+	Info(msg string, args ...any)
+	Error(msg string, args ...any)
 
 	IsDebug() bool
 	IsInfo() bool

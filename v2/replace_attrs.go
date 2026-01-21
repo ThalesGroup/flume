@@ -45,6 +45,7 @@ func AbbreviateLevel(_ []string, attr slog.Attr) slog.Attr {
 		case 'I':
 			strLvl = infAbbrev + strLvl[4:]
 		}
+
 		attr.Value = slog.StringValue(strLvl)
 	}
 
@@ -136,6 +137,7 @@ func RFC3339MillisTime() func(_ []string, a slog.Attr) slog.Attr {
 		// Unfortunately, that format trims trailing 0s, so add 1/10 millisecond
 		// to guarantee that there are exactly 4 digits after the period.
 		const prefixLen = len("2006-01-02T15:04:05.000")
+
 		t = t.Truncate(time.Millisecond).Add(time.Millisecond / 10)
 
 		// len(time.RFC3339Nano), but allocating on stack
@@ -169,6 +171,7 @@ func transformValuesOfKind(kind slog.Kind, transform func(slog.Value) slog.Value
 		if a.Value.Kind() == kind {
 			a.Value = transform(a.Value)
 		}
+
 		return a
 	}
 }
@@ -216,6 +219,7 @@ func applyReplaceAttrs(groups []string, a slog.Attr, fns []func([]string, slog.A
 		if fn == nil {
 			continue
 		}
+
 		a = fn(groups, a)
 
 		if a.Equal(slog.Attr{}) {

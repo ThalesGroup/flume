@@ -65,10 +65,13 @@ func initialize() {
 			} else {
 				b, _ = strconv.ParseBool(os.Getenv("FLUME_TEST_DISABLE"))
 			}
+
 			disabledPtr = &b
 		}
+
 		if verbosePtr == nil {
 			var b bool
+
 			b, _ = strconv.ParseBool(os.Getenv("FLUMETEST_VERBOSE"))
 			verbosePtr = &b
 		}
@@ -115,6 +118,7 @@ func Start(t testingTB) func() {
 	if Verbose() {
 		t.Cleanup(revertToSnapshot)
 		flume.Default().SetOut(flume.LogFuncWriter(t.Log, true))
+
 		return revertToSnapshot
 	}
 
@@ -124,6 +128,7 @@ func Start(t testingTB) func() {
 	// other goroutines won't still be trying to log
 	// to this buf while revert() is use buf
 	var mu sync.Mutex
+
 	buf := bytes.NewBuffer(nil)
 	flume.Default().SetOut(&syncWriter{w: buf, mu: &mu})
 
@@ -137,7 +142,9 @@ func Start(t testingTB) func() {
 		if !ran.CompareAndSwap(false, true) {
 			return
 		}
+
 		revertToSnapshot()
+
 		mu.Lock()
 		defer mu.Unlock()
 		// make sure that if the test panics or fails, we dump the logs
@@ -145,6 +152,7 @@ func Start(t testingTB) func() {
 		if buf.Len() > 0 && (recovered != nil || t.Failed()) {
 			t.Log(buf.String())
 		}
+
 		if recovered != nil {
 			panic(recovered)
 		}
@@ -182,6 +190,7 @@ func Start(t testingTB) func() {
 func Snapshot(h *flume.Handler) func() {
 	w := h.Out()
 	opts := h.HandlerOptions()
+
 	return func() {
 		h.SetOut(w)
 		h.SetHandlerOptions(opts)
@@ -190,7 +199,7 @@ func Snapshot(h *flume.Handler) func() {
 
 type testingTB interface {
 	Failed() bool
-	Log(args ...interface{})
+	Log(args ...any)
 	Cleanup(func())
 }
 
@@ -202,5 +211,6 @@ type syncWriter struct {
 func (s *syncWriter) Write(p []byte) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return s.w.Write(p) //nolint:wrapcheck
 }

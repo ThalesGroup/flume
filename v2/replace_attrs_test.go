@@ -159,6 +159,7 @@ func TestChainReplaceAttrs(t *testing.T) {
 					if a.Key == "color" {
 						panic("should not have been called")
 					}
+
 					return a
 				},
 			},
@@ -173,6 +174,7 @@ func TestChainReplaceAttrs(t *testing.T) {
 					if a.Key == "color" {
 						panic("should not have been called")
 					}
+
 					return a
 				},
 			},
@@ -233,6 +235,7 @@ func TestDetailedErrors(t *testing.T) {
 
 	// make sure text renders the same way
 	buf.Reset()
+
 	opts.HandlerFn = func(_ string, out io.Writer, opts *slog.HandlerOptions) slog.Handler {
 		return slog.NewTextHandler(out, opts)
 	}

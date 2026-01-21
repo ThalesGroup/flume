@@ -45,7 +45,9 @@ func ConfigFromEnv(envvars ...string) error {
 	if len(envvars) == 0 {
 		envvars = DefaultConfigEnvVars
 	}
+
 	var c HandlerOptions
+
 	err := UnmarshalEnv(&c, envvars...)
 	if err != nil {
 		return err
@@ -117,28 +119,35 @@ func UnmarshalEnv(o *HandlerOptions, envvars ...string) error {
 		if configString == "" {
 			continue
 		}
+
 		if strings.HasPrefix(configString, "{") {
 			err := json.Unmarshal([]byte(configString), o)
 			if err != nil {
 				return fmt.Errorf("parsing configuration from environment variable %v: %w", v, err)
 			}
+
 			return nil
 		}
 
 		// parse the value like a levels string
 		var levels Levels
+
 		err := levels.UnmarshalText([]byte(configString))
 		if err != nil {
 			return fmt.Errorf("parsing levels string from environment variable %v: %w", v, err)
 		}
+
 		opts := HandlerOptions{}
 		if defLvl, ok := levels["*"]; ok {
 			opts.Level = defLvl
+
 			delete(levels, "*")
 		}
+
 		opts.Levels = levels
 		*o = opts
 	}
+
 	return nil
 }
 
@@ -148,6 +157,7 @@ var initHandlerFnsOnce sync.Once
 
 func resetBuiltInHandlerFns() {
 	handlerFns = sync.Map{}
+
 	registerHandlerFn(TextHandler, func(_ string, w io.Writer, opts *slog.HandlerOptions) slog.Handler {
 		return slog.NewTextHandler(w, opts)
 	})
@@ -157,6 +167,7 @@ func resetBuiltInHandlerFns() {
 	registerHandlerFn(TermHandler, func(_ string, w io.Writer, opts *slog.HandlerOptions) slog.Handler {
 		termOpts := termHandlerOptions(opts)
 		termOpts.NoColor = true
+
 		return console.NewHandler(w, termOpts)
 	})
 	registerHandlerFn(TermColorHandler, func(_ string, w io.Writer, opts *slog.HandlerOptions) slog.Handler {
@@ -183,11 +194,14 @@ func initHandlerFns() {
 // "handler" property to a handler function.
 func LookupHandlerFn(name string) HandlerFn {
 	initHandlerFns()
+
 	v, ok := handlerFns.Load(name)
 	if !ok {
 		return nil
 	}
+
 	fn := v.(HandlerFn) //nolint:forcetypeassert // if it's not a HandlerFn, we should panic
+
 	return fn
 }
 
@@ -229,9 +243,11 @@ func registerHandlerFn(name string, fn HandlerFn) {
 	if fn == nil {
 		panic(fmt.Sprintf("constructor for sink %q is nil", name))
 	}
+
 	if name == "" {
 		panic("constructor registered with empty name")
 	}
+
 	handlerFns.Store(name, fn)
 }
 
@@ -244,10 +260,12 @@ func termHandlerOptions(opts *slog.HandlerOptions) *console.HandlerOptions {
 	if opts == nil {
 		opts = &slog.HandlerOptions{}
 	}
+
 	theme := console.NewDefaultTheme()
 	theme.Name = "flume"
 	theme.Source = console.ToANSICode(console.BrightBlack, console.Italic)
 	theme.AttrKey = console.ToANSICode(console.Green, console.Faint)
+
 	return &console.HandlerOptions{
 		AddSource:          opts.AddSource,
 		ReplaceAttr:        opts.ReplaceAttr,

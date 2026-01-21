@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"runtime"
+	"slices"
 	"testing"
 	"time"
 
@@ -19,10 +20,8 @@ import (
 // that removes all Attrs with the given keys.
 func removeKeys(keys ...string) func([]string, slog.Attr) slog.Attr {
 	return func(_ []string, a slog.Attr) slog.Attr {
-		for _, k := range keys {
-			if a.Key == k {
-				return slog.Attr{}
-			}
+		if slices.Contains(keys, a.Key) {
+			return slog.Attr{}
 		}
 
 		return a
@@ -143,7 +142,6 @@ func TestHandlerOptions_HandlerFn(t *testing.T) {
 	// blueSink := slog.NewTextHandler(buf, nil).WithAttrs([]slog.Attr{slog.String("sink", "blue")})
 	// yellowSink := slog.NewTextHandler(buf, nil).WithAttrs([]slog.Attr{slog.String("sink", "yellow")})
 	// defSink := slog.NewTextHandler(buf, nil).WithAttrs([]slog.Attr{slog.String("sink", "def")})
-
 	testCases := []struct {
 		desc      string
 		hFunc     func(string, io.Writer, *slog.HandlerOptions) slog.Handler
@@ -156,6 +154,7 @@ func TestHandlerOptions_HandlerFn(t *testing.T) {
 				if name == "blue" || name == "red" {
 					return slog.NewTextHandler(w, opts).WithAttrs([]slog.Attr{slog.String("sink", name)})
 				}
+
 				return slog.NewTextHandler(w, opts).WithAttrs([]slog.Attr{slog.String("sink", "def")})
 			},
 			want: map[string]string{
@@ -170,6 +169,7 @@ func TestHandlerOptions_HandlerFn(t *testing.T) {
 				if name == "blue" {
 					return nil
 				}
+
 				return slog.NewTextHandler(w, opts).WithAttrs([]slog.Attr{slog.String("sink", "def")})
 			},
 			want: map[string]string{
@@ -226,6 +226,7 @@ func TestHandlerOptions_Levels(t *testing.T) {
 					h := NewHandler(io.Discard, &HandlerOptions{})
 					h1 := h.WithAttrs([]slog.Attr{slog.String(LoggerKey, "h1")})
 					h2 := h1.WithAttrs([]slog.Attr{slog.String(LoggerKey, "h2")})
+
 					h.SetHandlerOptions(opts)
 					assert.True(t, h.Enabled(context.Background(), level))
 					assert.False(t, h.Enabled(context.Background(), level-1))
@@ -291,6 +292,7 @@ func TestHandlerOptions_ReplaceAttrs(t *testing.T) {
 		},
 	})
 	buf.Reset()
+
 	rec = rec.Clone()
 	rec.Add(slog.String("size", "big"))
 	h.Handle(context.Background(), rec)
@@ -354,6 +356,7 @@ func TestHandlerOptions_Clone(t *testing.T) {
 				assert.Nil(t, clone)
 				return
 			}
+
 			assertHandlerOptionsEqual(t, *clone, *tC.opts, "")
 
 			// modify original and verify clone is not modified
@@ -404,16 +407,22 @@ type handlerTest struct {
 
 func (ht handlerTest) Run(t *testing.T) {
 	t.Helper()
+
 	buf := bytes.NewBuffer(nil)
 
 	var r, w *os.File
+
 	if ht.stdout {
 		// special case: handler will write to stdout
 		oldStdout := os.Stdout
+
 		var err error
+
 		r, w, err = os.Pipe()
 		require.NoError(t, err)
+
 		os.Stdout = w
+
 		defer func() {
 			os.Stdout = oldStdout
 		}()

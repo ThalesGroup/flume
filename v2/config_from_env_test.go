@@ -88,7 +88,9 @@ func TestUnmarshalEnv(t *testing.T) {
 			for k, v := range test.env {
 				t.Setenv(k, v)
 			}
+
 			var opts HandlerOptions
+
 			err := UnmarshalEnv(&opts, test.envvars...)
 			if test.expectError != "" {
 				assert.ErrorContains(t, err, test.expectError)
@@ -143,6 +145,7 @@ func TestConfigFromEnv(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			// make sure the default handler is restored after the test
 			ogOpts := Default().HandlerOptions()
+
 			t.Cleanup(func() {
 				Default().SetHandlerOptions(ogOpts)
 			})
@@ -150,6 +153,7 @@ func TestConfigFromEnv(t *testing.T) {
 			for k, v := range test.env {
 				t.Setenv(k, v)
 			}
+
 			err := ConfigFromEnv(test.envvars...)
 			if test.expectError != "" {
 				assert.Error(t, err, test.expectError) //nolint:testifylint
@@ -214,10 +218,12 @@ func TestRegisterHandlerFn(t *testing.T) {
 			resetBuiltInHandlerFns()
 			// also reset after the test
 			t.Cleanup(resetBuiltInHandlerFns)
+
 			if tt.wantPanic {
 				assert.Panics(t, func() {
 					RegisterHandlerFn(tt.handlerName, tt.handlerFn)
 				})
+
 				return
 			}
 
@@ -236,6 +242,7 @@ func TestRegisterHandlerFn(t *testing.T) {
 
 func TestBuiltInHandlers(t *testing.T) {
 	theme := console.NewDefaultTheme()
+
 	builtIns := map[string]string{
 		TermHandler: "blue     |INF| hi\n",
 		TermColorHandler: styled("blue    ", theme.Header) + " " +
@@ -286,5 +293,6 @@ func styled(s string, c console.ANSIMod) string {
 	if c == "" {
 		return s
 	}
+
 	return strings.Join([]string{string(c), s, string(console.ResetMod)}, "")
 }

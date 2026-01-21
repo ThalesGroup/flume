@@ -76,7 +76,7 @@ func TestV1VerboseErrors(t *testing.T) {
 			attr: slog.Any("error", &formattableError{msg: "boom", detail: " with details"}),
 			validate: func(t *testing.T, result slog.Attr) {
 				// Should return a group with empty key
-				assert.Equal(t, "", result.Key)
+				assert.Empty(t, result.Key)
 				assert.Equal(t, slog.KindGroup, result.Value.Kind())
 
 				// Extract the group members
@@ -241,6 +241,7 @@ func TestV1JSONHandler(t *testing.T) {
 
 			// Parse the JSON output
 			var result map[string]any
+
 			err := json.Unmarshal(buf.Bytes(), &result)
 			require.NoError(t, err)
 

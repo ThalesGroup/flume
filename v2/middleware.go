@@ -113,8 +113,10 @@ func (r *ReplaceAttrsMiddleware) Handle(ctx context.Context, record slog.Record)
 		if !a.Equal(slog.Attr{}) {
 			newRecord.AddAttrs(a)
 		}
+
 		return true
 	})
+
 	return r.next.Handle(ctx, newRecord)
 }
 
@@ -128,12 +130,14 @@ func (r *ReplaceAttrsMiddleware) WithAttrs(attrs []slog.Attr) slog.Handler {
 		// all attrs resolved to empty, so no-op
 		return r
 	}
+
 	return r.clone(r.next.WithAttrs(attrs))
 }
 
 func (r *ReplaceAttrsMiddleware) WithGroup(name string) slog.Handler {
 	r = r.clone(r.next.WithGroup(name))
 	r.groups = append(r.groups, name)
+
 	return r
 }
 
@@ -157,9 +161,11 @@ func (r *ReplaceAttrsMiddleware) applyToTime(t time.Time) time.Time {
 	if attr.Value.Kind() == slog.KindTime {
 		return attr.Value.Time()
 	}
+
 	if attr.Value.Equal(slog.Value{}) {
 		return time.Time{}
 	}
+
 	return t
 }
 
@@ -168,11 +174,13 @@ func (r *ReplaceAttrsMiddleware) applyToLevel(l slog.Level) slog.Level {
 	if attr.Value.Equal(slog.Value{}) {
 		return slog.LevelInfo
 	}
+
 	if attr.Value.Kind() == slog.KindAny {
 		if lvl, ok := attr.Value.Any().(slog.Level); ok {
 			return lvl
 		}
 	}
+
 	return l
 }
 
@@ -182,6 +190,7 @@ func (r *ReplaceAttrsMiddleware) applyReplaceAttrRecurse(groups []string, attr s
 	if attr.Value.Kind() != slog.KindGroup {
 		attr = r.replaceAttr(r.groups, attr)
 		attr.Value = attr.Value.Resolve()
+
 		return attr
 	}
 
@@ -191,7 +200,9 @@ func (r *ReplaceAttrsMiddleware) applyReplaceAttrRecurse(groups []string, attr s
 		// empty group, elide
 		return slog.Attr{}
 	}
+
 	attr.Value = slog.GroupValue(members...)
+
 	return attr
 }
 
@@ -203,6 +214,7 @@ func (r *ReplaceAttrsMiddleware) applyReplaceAttr(groups []string, attrs []slog.
 			newAttrs = append(newAttrs, attr)
 		}
 	}
+
 	return newAttrs
 }
 
