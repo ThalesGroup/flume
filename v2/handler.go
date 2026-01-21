@@ -39,10 +39,12 @@ func (o *HandlerOptions) handler(name string, w io.Writer) slog.Handler {
 	}
 
 	var sink slog.Handler
+
 	handlerFn := o.HandlerFn
 	if handlerFn == nil {
 		handlerFn = TextHandlerFn()
 	}
+
 	sink = handlerFn(name, w, opts)
 	if sink == nil {
 		sink = noop
@@ -103,10 +105,12 @@ func (h *Handler) Named(name string) slog.Handler {
 func (h *Handler) HandlerOptions() *HandlerOptions {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
+
 	opts := h.opts.Clone()
 	if opts == nil {
 		return &HandlerOptions{}
 	}
+
 	return opts
 }
 
@@ -117,6 +121,7 @@ func (h *Handler) HandlerOptions() *HandlerOptions {
 func (h *Handler) SetHandlerOptions(opts *HandlerOptions) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
+
 	h.opts = opts.Clone()
 	h.reset()
 }
@@ -124,6 +129,7 @@ func (h *Handler) SetHandlerOptions(opts *HandlerOptions) {
 func (h *Handler) Out() io.Writer {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
+
 	return h.w
 }
 
@@ -134,6 +140,7 @@ func (h *Handler) Out() io.Writer {
 func (h *Handler) SetOut(w io.Writer) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
+
 	h.w = w
 	h.reset()
 }
@@ -154,10 +161,12 @@ func (h *Handler) delegatePtr(name string) *atomic.Pointer[slog.Handler] {
 		ptr = &atomic.Pointer[slog.Handler]{}
 		h.delegates[name] = ptr
 	}
+
 	if ptr.Load() == nil {
 		h := h.opts.handler(name, h.w)
 		ptr.Store(&h)
 	}
+
 	return ptr
 }
 
@@ -195,6 +204,7 @@ func (s *innerHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	transformer := func(h slog.Handler) slog.Handler {
 		return h.WithAttrs(attrs)
 	}
+
 	return &innerHandler{
 		root:         s.root,
 		basePtr:      delegate,
@@ -236,7 +246,9 @@ func (s *innerHandler) delegate() slog.Handler {
 	for _, transformer := range s.transformers {
 		delegate = transformer(delegate)
 	}
+
 	s.memoPrt.Store(&[2]*slog.Handler{base, &delegate})
+
 	return delegate
 }
 
@@ -247,6 +259,7 @@ func loggerName(attrs []slog.Attr) string {
 			return attrs[i].Value.String()
 		}
 	}
+
 	return ""
 }
 

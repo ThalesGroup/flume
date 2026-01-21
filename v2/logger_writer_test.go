@@ -31,6 +31,7 @@ func TestLoggerFuncWriter_Write(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			var buf bytes.Buffer
+
 			lw := LoggerFuncWriter(func(msg string, _ ...any) {
 				buf.WriteString(msg)
 			})
@@ -78,6 +79,7 @@ func TestLogFuncWriter_Write(t *testing.T) {
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
 			var buf bytes.Buffer
+
 			lw := LogFuncWriter(func(args ...any) {
 				fmt.Fprint(&buf, args...)
 			}, tc.trimSpace)

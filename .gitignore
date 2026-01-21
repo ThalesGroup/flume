@@ -2,3 +2,4 @@ vendor
 build
 go.work
 go.work.sum
+.claude/settings.local.json

@@ -245,8 +245,10 @@ func TestReplaceAttrs_SkipRecord(t *testing.T) {
 					rec := slog.NewRecord(time.Time{}, slog.LevelInfo, "hi", 0)
 					rec.Add("color", "red")
 					assert.Equal(t, rec, r)
+
 					return true
 				}
+
 				return NewHandler(buf, &HandlerOptions{
 					Middleware: []Middleware{mw},
 				})
@@ -268,6 +270,7 @@ func TestReplaceAttrs_SkipRecord(t *testing.T) {
 				mw.SkipRecord = func(_ slog.Record) bool {
 					return true
 				}
+
 				return NewHandler(buf, &HandlerOptions{
 					Middleware: []Middleware{mw},
 				})
@@ -285,6 +288,7 @@ func TestReplaceAttrs_SkipRecord(t *testing.T) {
 				mw.SkipRecord = func(_ slog.Record) bool {
 					return false
 				}
+
 				return NewHandler(buf, &HandlerOptions{
 					Middleware: []Middleware{mw},
 				})
@@ -302,6 +306,7 @@ func TestReplaceAttrs_SkipRecord(t *testing.T) {
 				mw.SkipRecord = func(_ slog.Record) bool {
 					return true
 				}
+
 				return NewHandler(buf, &HandlerOptions{
 					Middleware: []Middleware{mw},
 				}).WithAttrs([]slog.Attr{slog.String("color", "red"), slog.String("size", "big")})
@@ -322,6 +327,7 @@ func TestReplaceAttrs_SkipBuiltins(t *testing.T) {
 			handlerFn: func(buf *bytes.Buffer) slog.Handler {
 				mw := ReplaceAttrs(replaceKey(slog.MessageKey, slog.String(slog.MessageKey, "bye")))
 				mw.SkipBuiltins = true
+
 				return NewHandler(buf, &HandlerOptions{
 					Middleware: []Middleware{mw},
 				})
@@ -333,6 +339,7 @@ func TestReplaceAttrs_SkipBuiltins(t *testing.T) {
 			handlerFn: func(buf *bytes.Buffer) slog.Handler {
 				mw := ReplaceAttrs(replaceKey(slog.MessageKey, slog.String(slog.MessageKey, "bye")))
 				mw.SkipBuiltins = false
+
 				return NewHandler(buf, &HandlerOptions{
 					Middleware: []Middleware{mw},
 				})
@@ -350,6 +357,7 @@ func TestReplaceAttrs_Enabled(t *testing.T) {
 	// This test just ensures that the ReplaceAttrs middleware doesn't break the
 	// Enabled method.
 	buf := bytes.NewBuffer(nil)
+
 	var handler slog.Handler = slog.NewTextHandler(buf, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	})

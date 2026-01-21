@@ -20,6 +20,7 @@ linters:
     - thelper
     - varnamelen
     - wsl
+    - noinlineerr
   settings:
     exhaustive:
       default-signifies-exhaustive: true
@@ -55,6 +56,8 @@ linters:
           - goconst
           - gosec
           - scopelint
+          - err113
+          - wrapcheck
         path: _test\.go
       - linters:
           - gochecknoglobals
@@ -67,6 +70,9 @@ linters:
       - third_party$
       - builtin$
       - examples$
+issues:
+  new: false
+  fix: true
 formatters:
   enable:
     - gci

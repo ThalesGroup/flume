@@ -38,7 +38,9 @@ func (t *logWriter) Write(p []byte) (int, error) {
 	if t.trimSpace {
 		s = strings.TrimSpace(s)
 	}
+
 	t.lf(s)
+
 	return len(p), nil
 }
 

@@ -1,4 +1,3 @@
-//nolint:err113
 package flume
 
 import (
@@ -36,6 +35,7 @@ func ExampleTermHandler() {
 				if a.Key == slog.TimeKey {
 					a.Value = slog.AnyValue(fixedTime)
 				}
+
 				return a
 			},
 		},

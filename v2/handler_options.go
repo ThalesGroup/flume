@@ -54,6 +54,7 @@ func (o *HandlerOptions) Clone() *HandlerOptions {
 	if o == nil {
 		return nil
 	}
+
 	ret := &HandlerOptions{
 		Level:        o.Level,
 		Levels:       maps.Clone(o.Levels),
@@ -62,6 +63,7 @@ func (o *HandlerOptions) Clone() *HandlerOptions {
 		ReplaceAttrs: slices.Clone(o.ReplaceAttrs),
 		Middleware:   slices.Clone(o.Middleware),
 	}
+
 	return ret
 }
 
@@ -76,7 +78,8 @@ func (o *HandlerOptions) UnmarshalJSON(bytes []byte) error {
 		Encoding    string `json:"encoding"`
 	}{}
 
-	if err := json.Unmarshal(bytes, &s); err != nil {
+	err := json.Unmarshal(bytes, &s)
+	if err != nil {
 		return fmt.Errorf("invalid json config: %w", err)
 	}
 
@@ -96,6 +99,7 @@ func (o *HandlerOptions) UnmarshalJSON(bytes []byte) error {
 		if err != nil {
 			return err
 		}
+
 		opts.Level = level
 	}
 
@@ -103,19 +107,23 @@ func (o *HandlerOptions) UnmarshalJSON(bytes []byte) error {
 	case nil:
 	case string:
 		var l Levels
+
 		err := l.UnmarshalText([]byte(lvls))
 		if err != nil {
 			return err
 		}
+
 		opts.Levels = l
 	case map[string]any:
 		if len(lvls) > 0 {
 			opts.Levels = Levels{}
+
 			for n, l := range lvls {
 				lvl, err := parseLevel(l)
 				if err != nil {
 					return err
 				}
+
 				opts.Levels[n] = lvl
 			}
 		}
@@ -160,6 +168,7 @@ func (o *HandlerOptions) UnmarshalJSON(bytes []byte) error {
 		if fn == nil {
 			return fmt.Errorf("%w: '%v'", ErrUnregisteredHandler, s.Handler)
 		}
+
 		opts.HandlerFn = fn
 	}
 
@@ -200,6 +209,7 @@ func parseLevel(v any) (slog.Level, error) {
 		if v {
 			return LevelAll, nil
 		}
+
 		return LevelOff, nil
 	default:
 		return 0, fmt.Errorf("%w: should be string, number, or bool", ErrInvalidLevel)
@@ -233,10 +243,12 @@ func parseLevel(v any) (slog.Level, error) {
 	}
 
 	var l slog.Level
+
 	err := l.UnmarshalText([]byte(s))
 	if err != nil {
 		return 0, fmt.Errorf("%w '%v': %w", ErrInvalidLevel, v, err)
 	}
+
 	return l, nil
 }
 
@@ -247,7 +259,9 @@ func (l *Levels) UnmarshalText(text []byte) error {
 	if err != nil {
 		return err
 	}
+
 	*l = m
+
 	return nil
 }
 
@@ -294,12 +308,15 @@ func parseLevels(s string) (map[string]slog.Leveler, error) {
 			}
 		case 2:
 			var err error
+
 			m[parts[0]], err = parseLevel(parts[1])
 			errs = errors.Join(errs, err)
 		}
 	}
+
 	if errs != nil {
 		return nil, fmt.Errorf("%w '%v': %w", ErrInvalidLevels, s, errs)
 	}
+
 	return m, nil
 }

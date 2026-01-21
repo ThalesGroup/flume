@@ -110,6 +110,7 @@ linters:
       - examples$
 issues:
   new: false
+  fix: true
 formatters:
   exclusions:
     generated: lax

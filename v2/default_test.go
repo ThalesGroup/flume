@@ -33,6 +33,7 @@ func TestNew(t *testing.T) {
 				// the test is will have replaced os.Stdout, but the default handler
 				// is still writing to the old os.Stdout
 				h.SetOut(nil)
+
 				return h
 			},
 			want: "level=INFO msg=hi\n",
@@ -46,6 +47,7 @@ func TestNew(t *testing.T) {
 
 				Default().SetHandlerOptions(nil)
 			}
+
 			tt.stdout = true
 			tt.Run(t)
 		})

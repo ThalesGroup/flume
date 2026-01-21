@@ -44,5 +44,6 @@ func Default() *Handler {
 			HandlerFn: NoopHandlerFn(),
 		})
 	})
+
 	return defaultHandler
 }

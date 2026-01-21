@@ -27,6 +27,7 @@ func TestDevDefaults(t *testing.T) {
 	require.NotNil(t, dd.HandlerFn)
 
 	buf := &bytes.Buffer{}
+
 	h := dd.HandlerFn("test", buf, &slog.HandlerOptions{})
 	if _, ok := h.(*console.Handler); !ok {
 		t.Fatalf("expected console handler, got %T", h)
@@ -129,6 +130,7 @@ func TestLevels_MarshalText(t *testing.T) {
 
 			// test unmarshaling
 			var levels Levels
+
 			err = levels.UnmarshalText(actual)
 			require.NoError(t, err)
 
@@ -185,6 +187,7 @@ func TestLevels_UnmarshalText(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			var levels Levels
+
 			err := levels.UnmarshalText([]byte(test.text))
 			if test.wantError != "" {
 				require.ErrorContains(t, err, test.wantError)
@@ -200,6 +203,7 @@ func TestLevels_UnmarshalText(t *testing.T) {
 			require.NoError(t, err)
 
 			var levels2 Levels
+
 			err = levels2.UnmarshalText(actual)
 			require.NoError(t, err)
 
@@ -405,14 +409,17 @@ func TestHandlerOptions_UnmarshalJSON(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			var opts HandlerOptions
+
 			err := json.Unmarshal([]byte(test.confJSON), &opts)
 			if test.wantErr != "" || test.wantErrIs != nil {
 				if test.wantErrIs != nil {
 					assert.ErrorIs(t, err, test.wantErrIs) //nolint:testifylint
 				}
+
 				if test.wantErr != "" {
 					assert.EqualError(t, err, test.wantErr) //nolint:testifylint
 				}
+
 				return
 			}
 
