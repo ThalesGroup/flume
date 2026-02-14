@@ -1,8 +1,8 @@
 module github.com/ThalesGroup/flume/v2
 
-go 1.21
+go 1.24
 
-toolchain go1.23.4
+toolchain go1.24.10
 
 require (
 	github.com/ansel1/console-slog v0.6.0

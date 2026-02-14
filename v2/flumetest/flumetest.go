@@ -12,6 +12,23 @@
 //	FLUMETEST_DISABLE=true     // Makes Start() a no-op
 //	FLUMETEST_VERBOSE=true     // Start() will forward each log message to t.Log() immediately
 //	                           // aliased to FLUME_TEST_VERBOSE for backward compatibility with v1
+//
+// Command line flags:
+//
+//	-artifacts
+//		Save logs to artifact files, rather than dumping them to t.Log().  Artifacts are
+//		stored in folders under $outputdir/_artifacts/.
+//
+// Note: This is a native flag in go1.26, but we backfill for older versions of go.
+// In older versions, because it is a backfilled flag, it must come after the package argument:
+//
+// pre go1.26:
+//
+//	go test -v -outputdir build . -artifacts
+//
+// go1.26+:
+//
+//	go test -v -artifacts -outputdir build
 package flumetest
 
 import (
@@ -115,21 +132,22 @@ func Start(t testingTB) func() {
 	}
 
 	revertToSnapshot := Snapshot(flume.Default())
-	if Verbose() {
+
+	verbose := Verbose()
+	artifacts := artifactsEnabled()
+
+	if verbose && !artifacts {
 		t.Cleanup(revertToSnapshot)
 		flume.Default().SetOut(flume.LogFuncWriter(t.Log, true))
 
 		return revertToSnapshot
 	}
 
-	// need to lock around access to the buffer
-	// when revert() is called, we will set the loggers
-	// to some other out writer, but we can't guarantee
-	// other goroutines won't still be trying to log
-	// to this buf while revert() is use buf
-	var mu sync.Mutex
+	var (
+		mu  sync.Mutex
+		buf = bytes.NewBuffer(nil)
+	)
 
-	buf := bytes.NewBuffer(nil)
 	flume.Default().SetOut(&syncWriter{w: buf, mu: &mu})
 
 	// since we're calling this function via t.Cleanup *and* returning
@@ -147,9 +165,20 @@ func Start(t testingTB) func() {
 
 		mu.Lock()
 		defer mu.Unlock()
-		// make sure that if the test panics or fails, we dump the logs
+
+		// make sure that if the test panics, we re-panic after cleanup
 		recovered := recover()
-		if buf.Len() > 0 && (recovered != nil || t.Failed()) {
+
+		failed := recovered != nil || t.Failed()
+
+		// Save to artifact file on failure/panic, or always when verbose.
+		// On success without verbose, discard logs (don't create artifact dir).
+		saveArtifact := artifacts && (failed || verbose)
+
+		if saveArtifact && buf.Len() > 0 {
+			writeArtifact(t, buf.Bytes())
+		} else if buf.Len() > 0 && failed {
+			// no artifact file: dump to t.Log on failure
 			t.Log(buf.String())
 		}
 
@@ -178,6 +207,16 @@ func Start(t testingTB) func() {
 	return revert
 }
 
+func writeArtifact(t testingTB, data []byte) {
+	artifactFile := openArtifactFile(t)
+	if artifactFile == nil {
+		return
+	}
+	defer artifactFile.Close()
+
+	_, _ = artifactFile.Write(data)
+}
+
 // Snapshot returns a function which will revert the configuration
 // of the given handler to its state at the time Snapshot() was called.
 // The state includes the current output writer, and the handler opts.
@@ -201,6 +240,7 @@ type testingTB interface {
 	Failed() bool
 	Log(args ...any)
 	Cleanup(func())
+	Name() string
 }
 
 type syncWriter struct {
