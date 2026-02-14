@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go vet:*)",
+      "Bash(go test:*)",
+      "Bash(go version:*)",
+      "Bash(go doc:*)",
+      "Bash(go help:*)",
+      "WebSearch"
+    ]
+  }
+}
