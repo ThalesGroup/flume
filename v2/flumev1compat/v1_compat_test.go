@@ -1,4 +1,4 @@
-package flume
+package flumev1compat
 
 import (
 	"bytes"
@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ThalesGroup/flume/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -164,19 +165,19 @@ func TestV1VerboseErrors(t *testing.T) {
 
 func TestV1JSONHandler(t *testing.T) {
 	// Save the original JSON handler to restore it at the end
-	originalHandler := JSONHandlerFn()
+	originalHandler := flume.JSONHandlerFn()
 	require.NotNil(t, originalHandler)
 
 	// Ensure we restore the original handler at the end
 	defer func() {
-		RegisterHandlerFn(JSONHandler, originalHandler)
+		flume.RegisterHandlerFn(flume.JSONHandler, originalHandler)
 	}()
 
 	// Call V1JSONHandler to configure the v1-compatible handler
 	V1JSONHandler()
 
 	// Get the configured handler function
-	handlerFn := JSONHandlerFn()
+	handlerFn := flume.JSONHandlerFn()
 	require.NotNil(t, handlerFn)
 
 	// Test that the handler applies all v1 transformations
