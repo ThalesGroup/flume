@@ -102,6 +102,9 @@ type SlogLogger interface {
 	ErrorContext(ctx context.Context, msg string, args ...any)
 }
 
+// SlogAdapter wraps a FlumeV1Logger and implements SlogLogger.
+// Because FlumeV1Logger has no Warn method, Warn and WarnContext
+// are mapped to Info (preferring under-reporting over over-reporting).
 type SlogAdapter struct {
 	l FlumeV1Logger
 }
@@ -151,11 +154,11 @@ func (s *SlogAdapter) InfoContext(_ context.Context, msg string, args ...any) {
 }
 
 func (s *SlogAdapter) Warn(msg string, args ...any) {
-	s.l.Error(msg, args...)
+	s.l.Info(msg, args...)
 }
 
 func (s *SlogAdapter) WarnContext(_ context.Context, msg string, args ...any) {
-	s.l.Error(msg, args...)
+	s.l.Info(msg, args...)
 }
 
 func (s *SlogAdapter) Error(msg string, args ...any) {
