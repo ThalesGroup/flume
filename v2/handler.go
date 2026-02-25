@@ -118,6 +118,14 @@ func (h *Handler) HandlerOptions() *HandlerOptions {
 // when sink handlers are created.  This triggers rebuilding
 // all the sink handlers with the new opts,
 // so affects on logging will apply immediately.
+//
+// Passing nil is equivalent to passing &HandlerOptions{}, which
+// resets to defaults: a text handler writing to os.Stdout at LevelInfo.
+//
+// HandlerOptions zero-value defaults:
+//   - HandlerFn: nil → text handler (slog.NewTextHandler)
+//   - Level: nil → slog.LevelInfo
+//   - Writer: nil → os.Stdout
 func (h *Handler) SetHandlerOptions(opts *HandlerOptions) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
