@@ -147,8 +147,8 @@ func (h *Handler) SetOut(w io.Writer) {
 
 func (h *Handler) reset() {
 	for name, ptr := range h.delegates {
-		h := h.opts.handler(name, h.w)
-		ptr.Store(&h)
+		sink := h.opts.handler(name, h.w)
+		ptr.Store(&sink)
 	}
 }
 
@@ -163,8 +163,8 @@ func (h *Handler) delegatePtr(name string) *atomic.Pointer[slog.Handler] {
 	}
 
 	if ptr.Load() == nil {
-		h := h.opts.handler(name, h.w)
-		ptr.Store(&h)
+		sink := h.opts.handler(name, h.w)
+		ptr.Store(&sink)
 	}
 
 	return ptr
