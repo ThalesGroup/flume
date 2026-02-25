@@ -56,6 +56,8 @@ func Disabled() bool {
 }
 
 func SetDisabled(disabled bool) {
+	initialize()
+
 	*disabledPtr = disabled
 }
 
@@ -65,6 +67,8 @@ func Verbose() bool {
 }
 
 func SetVerbose(verbose bool) {
+	initialize()
+
 	*verbosePtr = verbose
 }
 
