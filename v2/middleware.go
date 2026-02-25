@@ -82,6 +82,8 @@ func (r *ReplaceAttrsMiddleware) Handle(ctx context.Context, record slog.Record)
 	return r.next.Handle(ctx, newRecord)
 }
 
+// WithAttrs filters attrs in-place, reusing the input slice's backing
+// array for efficiency. Callers must not retain the input slice after the call.
 func (r *ReplaceAttrsMiddleware) WithAttrs(attrs []slog.Attr) slog.Handler {
 	if r.replaceAttr == nil {
 		return r.clone(r.next.WithAttrs(attrs))
