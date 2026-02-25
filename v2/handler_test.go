@@ -372,7 +372,7 @@ func TestHandlerOptions_Clone(t *testing.T) {
 			tC.opts.HandlerFn = nil
 
 			assert.Equal(t, slog.LevelInfo, clone.Level)
-			assert.Equal(t, map[string]slog.Leveler{
+			assert.Equal(t, Levels{
 				"foo": slog.LevelWarn,
 			}, clone.Levels)
 			assert.True(t, clone.AddSource)

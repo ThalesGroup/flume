@@ -7,44 +7,6 @@ import (
 	"time"
 )
 
-// const badKey = "!BADKEY"
-
-// Looks like this isn't needed.  New govet rules make the compiler enforce arg pairs to slog methods,
-// so it's pretty hard now to pass a bare arg.
-// func BareAttr() Middleware {
-// 	return HandlerMiddlewareFunc(func(ctx context.Context, record slog.Record, next slog.Handler) error {
-// 		// if the record only has a single attr, and that attr was added without a matching
-// 		// key, slog will set the key to "!BADKEY".  In flume v1, we added attrs like that
-// 		// with an underscore as the key.
-//
-// 		if record.NumAttrs() != 1 {
-// 			return next.Handle(ctx, record)
-// 		}
-//
-// 		record.Attrs(func(attr slog.Attr) bool {
-// 			if attr.Key != badKey {
-// 				return false
-// 			}
-//
-// 			// slog.Record has no means to
-// 			record = slog.NewRecord(record.Time, record.Level, record.Message, record.PC)
-//
-// 			if _, ok := asError(attr.Value); ok {
-// 				attr.Key = "error"
-// 			} else {
-// 				attr.Key = "value"
-// 			}
-//
-// 			record.AddAttrs(attr)
-//
-// 			// stop immediately, we only care about the first attr
-// 			return false
-// 		})
-//
-// 		return next.Handle(ctx, record)
-// 	})
-// }
-
 // ReplaceAttrs is middleware which adds ReplaceAttr support to other Handlers
 // which don't natively have it.
 // Because this can only act on the slog.Record as it passes through the middleware,
@@ -120,6 +82,8 @@ func (r *ReplaceAttrsMiddleware) Handle(ctx context.Context, record slog.Record)
 	return r.next.Handle(ctx, newRecord)
 }
 
+// WithAttrs filters attrs in-place, reusing the input slice's backing
+// array for efficiency. Callers must not retain the input slice after the call.
 func (r *ReplaceAttrsMiddleware) WithAttrs(attrs []slog.Attr) slog.Handler {
 	if r.replaceAttr == nil {
 		return r.clone(r.next.WithAttrs(attrs))

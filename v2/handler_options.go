@@ -31,7 +31,7 @@ type HandlerOptions struct {
 	// default level for all loggers, defaults to slog.LevelInfo
 	Level slog.Leveler
 	// per-logger levels
-	Levels map[string]slog.Leveler
+	Levels Levels
 	// add source to log records
 	AddSource bool
 	// replace attributes

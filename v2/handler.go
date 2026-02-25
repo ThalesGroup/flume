@@ -12,7 +12,7 @@ import (
 
 const (
 	// LoggerKey is the key which stores the name of the logger.  The name was the argument
-	// passed to Controller.NewLogger() or Controller.NewHandler()
+	// passed to New() or Named()
 	LoggerKey = "logger"
 )
 
@@ -118,6 +118,14 @@ func (h *Handler) HandlerOptions() *HandlerOptions {
 // when sink handlers are created.  This triggers rebuilding
 // all the sink handlers with the new opts,
 // so affects on logging will apply immediately.
+//
+// Passing nil is equivalent to passing &HandlerOptions{}, which
+// resets to defaults: a text handler writing to os.Stdout at LevelInfo.
+//
+// HandlerOptions zero-value defaults:
+//   - HandlerFn: nil → text handler (slog.NewTextHandler)
+//   - Level: nil → slog.LevelInfo
+//   - Writer: nil → os.Stdout
 func (h *Handler) SetHandlerOptions(opts *HandlerOptions) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
@@ -147,8 +155,8 @@ func (h *Handler) SetOut(w io.Writer) {
 
 func (h *Handler) reset() {
 	for name, ptr := range h.delegates {
-		h := h.opts.handler(name, h.w)
-		ptr.Store(&h)
+		sink := h.opts.handler(name, h.w)
+		ptr.Store(&sink)
 	}
 }
 
@@ -163,8 +171,8 @@ func (h *Handler) delegatePtr(name string) *atomic.Pointer[slog.Handler] {
 	}
 
 	if ptr.Load() == nil {
-		h := h.opts.handler(name, h.w)
-		ptr.Store(&h)
+		sink := h.opts.handler(name, h.w)
+		ptr.Store(&sink)
 	}
 
 	return ptr
@@ -177,7 +185,7 @@ type innerHandler struct {
 
 	// atomic pointer to a memoized copy of the base
 	// delegate, plus any transformations (i.e. WithGroup or WithAttrs calls)
-	memoPrt atomic.Pointer[[2]*slog.Handler]
+	memoPtr atomic.Pointer[[2]*slog.Handler]
 
 	// list of WithGroup/WithAttrs transformations.  Can be re-applied
 	// to the base delegate any time it changes
@@ -236,7 +244,7 @@ func (s *innerHandler) Handle(ctx context.Context, record slog.Record) error {
 func (s *innerHandler) delegate() slog.Handler {
 	base := s.basePtr.Load()
 
-	memo := s.memoPrt.Load()
+	memo := s.memoPtr.Load()
 	if memo != nil && memo[0] == base && memo[1] != nil {
 		return *memo[1]
 	}
@@ -247,7 +255,7 @@ func (s *innerHandler) delegate() slog.Handler {
 		delegate = transformer(delegate)
 	}
 
-	s.memoPrt.Store(&[2]*slog.Handler{base, &delegate})
+	s.memoPtr.Store(&[2]*slog.Handler{base, &delegate})
 
 	return delegate
 }

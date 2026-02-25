@@ -1,4 +1,4 @@
-package flume
+package flumev1compat
 
 import (
 	"encoding/json"
@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+
+	"github.com/ThalesGroup/flume/v2"
 )
 
 // These are helpers to configure v2 to behave like v1.
@@ -16,8 +18,8 @@ import (
 // - "errorsVerbose" key for formattable errors
 func V1JSONHandler() {
 	// Alters the default JSON handler to mimic the behavior of yugolog/flumev1/zap
-	RegisterHandlerFn(JSONHandler, func(_ string, w io.Writer, opts *slog.HandlerOptions) slog.Handler {
-		opts.ReplaceAttr = ChainReplaceAttrs(opts.ReplaceAttr, AbbreviateLevel, SecondsDuration(), V1VerboseErrors)
+	flume.RegisterHandlerFn(flume.JSONHandler, func(_ string, w io.Writer, opts *slog.HandlerOptions) slog.Handler {
+		opts.ReplaceAttr = flume.ChainReplaceAttrs(opts.ReplaceAttr, flume.AbbreviateLevel, flume.SecondsDuration(), V1VerboseErrors)
 		return slog.NewJSONHandler(w, opts)
 	})
 }

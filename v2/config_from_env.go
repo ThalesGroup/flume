@@ -20,11 +20,15 @@ const (
 	NoopHandler      = "noop"
 )
 
-// DefaultConfigEnvVars is a list of the environment variables
-// that ConfigFromEnv will search by default.
-var DefaultConfigEnvVars = []string{"FLUME"}
+var defaultConfigEnvVars = []string{"FLUME"}
 
-// ConfigFromEnv configures flume from environment variables.
+// DefaultConfigEnvVars returns a copy of the default environment variable
+// names that ConfigFromEnv will search.
+func DefaultConfigEnvVars() []string {
+	return append([]string(nil), defaultConfigEnvVars...)
+}
+
+// ConfigFromEnv enables logging and configures flume from environment variables.
 // It should be called from main():
 //
 //	func main() {
@@ -32,18 +36,20 @@ var DefaultConfigEnvVars = []string{"FLUME"}
 //	    ...
 //	 }
 //
-// It searches envvars for the first environment
-// variable that is set, and attempts to parse the value.
+// Calling this function always enables logging by switching the default handler
+// from noop to a text handler writing to stdout at LevelInfo.
 //
-// If no environment variable is set, it silently does nothing.
+// If an environment variable is set, its value overrides the defaults.
+// It searches envvars for the first environment variable that is set,
+// and attempts to parse the value.
 //
 // If an environment variable with a value is found, but parsing
 // fails, an error is returned.
 //
-// If envvars is empty, it defaults to DefaultConfigEnvVars.
+// If envvars is empty, it defaults to DefaultConfigEnvVars().
 func ConfigFromEnv(envvars ...string) error {
 	if len(envvars) == 0 {
-		envvars = DefaultConfigEnvVars
+		envvars = defaultConfigEnvVars
 	}
 
 	var c HandlerOptions
@@ -59,6 +65,7 @@ func ConfigFromEnv(envvars ...string) error {
 }
 
 // MustConfigFromEnv is like ConfigFromEnv, but panics on error.
+// Like ConfigFromEnv, it always enables logging even when no environment variable is set.
 func MustConfigFromEnv(envvars ...string) {
 	err := ConfigFromEnv(envvars...)
 	if err != nil {

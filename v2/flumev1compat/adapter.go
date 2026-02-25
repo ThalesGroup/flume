@@ -1,4 +1,4 @@
-package flume
+package flumev1compat
 
 import (
 	"context"
@@ -52,22 +52,22 @@ import (
 // Here's how your package might look:
 //
 //    // Create a type alias, so your API doesn't export types from this package.
-//    type Logger = flume.FlumeV1Logger
+//    type Logger = flumev1compat.FlumeV1Logger
 //
 //    // Unexported package variable holding the logger your code will log to.  Drop in
 //    // replacement for *slog.Logger
-//    var logger yugoslog.SlogLogger
+//    var logger flumev1compat.SlogLogger
 //
 //    // deprecated: Use Logger() instead
 //    func Logging(l Logger) {
-//      logger = yugoslog.NewSlogAdapter(l)
+//      logger = flumev1compat.NewSlogAdapter(l)
 //    }
 //
 //    func Logger(l *slog.Logger) {
 //      logger = l
 //    }
 //
-// In the next major version of your package, remove Logger(), and replace yugoslog.SlogLogger with direct references to *slog.Logger.
+// In the next major version of your package, remove Logger(), and replace flumev1compat.SlogLogger with direct references to *slog.Logger.
 //
 // Note that this won't work if your package uses With()...it could be done by extending the FlumeV1Logger interface  and SlogLogger
 // interfaces with a With() method, but would require wrapping an adapter around *slog.Loggers too.
@@ -102,6 +102,9 @@ type SlogLogger interface {
 	ErrorContext(ctx context.Context, msg string, args ...any)
 }
 
+// SlogAdapter wraps a FlumeV1Logger and implements SlogLogger.
+// Because FlumeV1Logger has no Warn method, Warn and WarnContext
+// are mapped to Info (preferring under-reporting over over-reporting).
 type SlogAdapter struct {
 	l FlumeV1Logger
 }
@@ -151,11 +154,11 @@ func (s *SlogAdapter) InfoContext(_ context.Context, msg string, args ...any) {
 }
 
 func (s *SlogAdapter) Warn(msg string, args ...any) {
-	s.l.Error(msg, args...)
+	s.l.Info(msg, args...)
 }
 
 func (s *SlogAdapter) WarnContext(_ context.Context, msg string, args ...any) {
-	s.l.Error(msg, args...)
+	s.l.Info(msg, args...)
 }
 
 func (s *SlogAdapter) Error(msg string, args ...any) {
