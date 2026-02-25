@@ -12,7 +12,7 @@ import (
 
 const (
 	// LoggerKey is the key which stores the name of the logger.  The name was the argument
-	// passed to Controller.NewLogger() or Controller.NewHandler()
+	// passed to New() or Named()
 	LoggerKey = "logger"
 )
 
