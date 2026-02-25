@@ -220,8 +220,12 @@ func writeArtifact(t testingTB, data []byte) {
 // Snapshot returns a function which will revert the configuration
 // of the given handler to its state at the time Snapshot() was called.
 // The state includes the current output writer, and the handler opts.
-// Useful in tests to temporarily change the state of the handler for the
-// duration of the test, e.g.:
+//
+// Start() calls Snapshot internally, so most tests do not need to call
+// Snapshot directly.  Snapshot is exported for advanced use cases that
+// need custom snapshot/restore patterns outside of the Start() flow.
+//
+// Example:
 //
 //	t.Cleanup(flumetest.Snapshot(flume.Default()))
 //	// or...
