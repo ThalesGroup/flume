@@ -177,7 +177,7 @@ type innerHandler struct {
 
 	// atomic pointer to a memoized copy of the base
 	// delegate, plus any transformations (i.e. WithGroup or WithAttrs calls)
-	memoPrt atomic.Pointer[[2]*slog.Handler]
+	memoPtr atomic.Pointer[[2]*slog.Handler]
 
 	// list of WithGroup/WithAttrs transformations.  Can be re-applied
 	// to the base delegate any time it changes
@@ -236,7 +236,7 @@ func (s *innerHandler) Handle(ctx context.Context, record slog.Record) error {
 func (s *innerHandler) delegate() slog.Handler {
 	base := s.basePtr.Load()
 
-	memo := s.memoPrt.Load()
+	memo := s.memoPtr.Load()
 	if memo != nil && memo[0] == base && memo[1] != nil {
 		return *memo[1]
 	}
@@ -247,7 +247,7 @@ func (s *innerHandler) delegate() slog.Handler {
 		delegate = transformer(delegate)
 	}
 
-	s.memoPrt.Store(&[2]*slog.Handler{base, &delegate})
+	s.memoPtr.Store(&[2]*slog.Handler{base, &delegate})
 
 	return delegate
 }
