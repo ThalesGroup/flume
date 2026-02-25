@@ -20,9 +20,13 @@ const (
 	NoopHandler      = "noop"
 )
 
-// DefaultConfigEnvVars is a list of the environment variables
-// that ConfigFromEnv will search by default.
-var DefaultConfigEnvVars = []string{"FLUME"}
+var defaultConfigEnvVars = []string{"FLUME"}
+
+// DefaultConfigEnvVars returns a copy of the default environment variable
+// names that ConfigFromEnv will search.
+func DefaultConfigEnvVars() []string {
+	return append([]string(nil), defaultConfigEnvVars...)
+}
 
 // ConfigFromEnv enables logging and configures flume from environment variables.
 // It should be called from main():
@@ -45,7 +49,7 @@ var DefaultConfigEnvVars = []string{"FLUME"}
 // If envvars is empty, it defaults to DefaultConfigEnvVars().
 func ConfigFromEnv(envvars ...string) error {
 	if len(envvars) == 0 {
-		envvars = DefaultConfigEnvVars
+		envvars = defaultConfigEnvVars
 	}
 
 	var c HandlerOptions

@@ -30,7 +30,7 @@ func TestUnmarshalEnv(t *testing.T) {
 			env: map[string]string{
 				"FLUME": `{"level":"WRN"}`,
 			},
-			envvars: DefaultConfigEnvVars,
+			envvars: DefaultConfigEnvVars(),
 			expected: HandlerOptions{
 				Level: slog.LevelWarn,
 			},
@@ -57,7 +57,7 @@ func TestUnmarshalEnv(t *testing.T) {
 			env: map[string]string{
 				"FLUME": `{{not json}}`,
 			},
-			envvars:     DefaultConfigEnvVars,
+			envvars:     DefaultConfigEnvVars(),
 			expectError: "parsing configuration from environment variable FLUME: invalid character",
 		},
 		{
@@ -65,7 +65,7 @@ func TestUnmarshalEnv(t *testing.T) {
 			env: map[string]string{
 				"FLUME": `blue=RED`,
 			},
-			envvars:     DefaultConfigEnvVars,
+			envvars:     DefaultConfigEnvVars(),
 			expectError: "parsing levels string from environment variable FLUME: invalid levels value 'blue=RED': invalid log level 'RED': slog: level string \"RED\": unknown name",
 		},
 		{
@@ -73,7 +73,7 @@ func TestUnmarshalEnv(t *testing.T) {
 			env: map[string]string{
 				"FLUME": `*=DBG,blue=WRN`,
 			},
-			envvars: DefaultConfigEnvVars,
+			envvars: DefaultConfigEnvVars(),
 			expected: HandlerOptions{
 				Level: LevelDebug,
 				Levels: map[string]slog.Leveler{
