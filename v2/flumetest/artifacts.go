@@ -1,13 +1,13 @@
 package flumetest
 
 import (
-	"flag"
 	"fmt"
 	"hash/fnv"
 	"io"
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,48 +19,38 @@ var (
 	artifactDirs   = make(map[testingTB]string)
 )
 
-func init() { //nolint:gochecknoinits
-	// Register -artifacts flag if go1.26 hasn't already done so.
-	if flag.CommandLine.Lookup("test.artifacts") == nil &&
-		flag.CommandLine.Lookup("artifacts") == nil {
-		flag.Bool("artifacts", false, "store test artifacts in test output dir")
-	}
-}
-
 func artifactLogFileName() string {
 	return "flumetest_" + time.Now().Format("20060102T150405.000") + ".log"
-}
-
-// artifactsEnabled checks whether the -artifacts flag was set to true.
-// Checks both "test.artifacts" (go1.26+ via `go test -artifacts`) and
-// "artifacts" (go1.25 and below, where `go test` passes unknown flags through as-is).
-func artifactsEnabled() bool {
-	for _, name := range []string{"test.artifacts", "artifacts"} {
-		if f := flag.CommandLine.Lookup(name); f != nil {
-			if f.Value.String() == "true" {
-				return true
-			}
-		}
-	}
-
-	return false
 }
 
 type hasArtifactDir interface {
 	ArtifactDir() string
 }
 
-// getArtifactDir returns the artifact directory for t.
-// On go1.26+ it delegates to t.ArtifactDir(); on older versions it emulates
-// the same behavior using flag inspection and os.MkdirTemp.
-func getArtifactDir(t testingTB) (string, bool) {
-	// go1.26+ exposes ArtifactDir() on *testing.T.
-	if a, ok := t.(hasArtifactDir); ok {
-		return a.ArtifactDir(), true
+// nativeArtifactsFlag reports whether Go 1.26's -test.artifacts flag is
+// registered and set to true.
+func nativeArtifactsFlag() bool {
+	if f := flagSet.Lookup("test.artifacts"); f != nil {
+		b, _ := strconv.ParseBool(f.Value.String())
+		return b
 	}
 
-	if !artifactsEnabled() {
+	return false
+}
+
+// getArtifactDir returns the artifact directory for t.
+// When go1.26's native -test.artifacts flag is active it delegates to
+// t.ArtifactDir(); otherwise it emulates the same behavior using flag
+// inspection and os.MkdirTemp.
+func getArtifactDir(t testingTB) (string, bool) {
+	if !Artifacts() {
 		return "", false
+	}
+
+	// go1.26+: if the native flag is also enabled, delegate to t.ArtifactDir()
+	// so the go tool manages the directory lifecycle.
+	if a, ok := t.(hasArtifactDir); ok && nativeArtifactsFlag() {
+		return a.ArtifactDir(), true
 	}
 
 	artifactDirsMu.Lock()
@@ -72,7 +62,7 @@ func getArtifactDir(t testingTB) (string, bool) {
 
 	// Get output dir from -test.outputdir flag, default to "."
 	outputDir := "."
-	if f := flag.CommandLine.Lookup("test.outputdir"); f != nil && f.Value.String() != "" {
+	if f := flagSet.Lookup("test.outputdir"); f != nil && f.Value.String() != "" {
 		outputDir = f.Value.String()
 	}
 

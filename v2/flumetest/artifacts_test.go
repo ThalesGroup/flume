@@ -1,7 +1,6 @@
 package flumetest
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -25,23 +24,14 @@ type mockTOldGo struct {
 
 func (m *mockTOldGo) Name() string { return m.name }
 
-// clearArtifactsFlag temporarily disables the artifacts flag for the duration of t,
-// regardless of how the test binary was invoked.
+// clearArtifactsFlag temporarily disables artifacts for the duration of t.
 func clearArtifactsFlag(t *testing.T) {
 	t.Helper()
 
-	for _, name := range []string{"test.artifacts", "artifacts"} {
-		if f := flag.CommandLine.Lookup(name); f != nil {
-			old := f.Value.String()
+	old := Artifacts()
 
-			require.NoError(t, flag.CommandLine.Set(name, "false"))
-			t.Cleanup(func() { _ = flag.CommandLine.Set(name, old) })
-
-			return
-		}
-	}
-
-	t.Fatal("no artifacts flag found")
+	SetArtifacts(false)
+	t.Cleanup(func() { SetArtifacts(old) })
 }
 
 // setOutputDir temporarily points the test.outputdir flag at a fresh temp directory
@@ -50,7 +40,7 @@ func clearArtifactsFlag(t *testing.T) {
 func setOutputDir(t *testing.T) string {
 	t.Helper()
 
-	f := flag.CommandLine.Lookup("test.outputdir")
+	f := flagSet.Lookup("test.outputdir")
 	if f == nil {
 		t.Skip("test.outputdir flag not registered in this test binary")
 	}
@@ -58,8 +48,8 @@ func setOutputDir(t *testing.T) string {
 	dir := t.TempDir()
 	old := f.Value.String()
 
-	require.NoError(t, flag.CommandLine.Set("test.outputdir", dir))
-	t.Cleanup(func() { _ = flag.CommandLine.Set("test.outputdir", old) })
+	require.NoError(t, flagSet.Set("test.outputdir", dir))
+	t.Cleanup(func() { _ = flagSet.Set("test.outputdir", old) })
 
 	return dir
 }
@@ -182,6 +172,52 @@ func TestGetArtifactDir(t *testing.T) {
 		require.True(t, ok2)
 
 		assert.Equal(t, dir1, dir2, "expected consecutive calls to return the same directory")
+	})
+
+	t.Run("go126_native_flag_delegates_to_ArtifactDir", func(t *testing.T) {
+		setArtifactsFlag(t)
+		setNativeArtifactsFlag(t)
+
+		dir := t.TempDir()
+		m := &mockTWithArtifacts{mockT: mockT{}, artifactDir: dir}
+
+		got, ok := getArtifactDir(m)
+		require.True(t, ok)
+		assert.Equal(t, dir, got, "should delegate to t.ArtifactDir() when native flag is set")
+	})
+
+	t.Run("go126_native_flag_false_uses_backfill", func(t *testing.T) {
+		setArtifactsFlag(t)
+		clearNativeArtifactsFlag(t)
+		outDir := setOutputDir(t)
+
+		m := &mockTWithArtifacts{
+			mockT:       mockT{},
+			artifactDir: "/should/not/be/used",
+		}
+
+		got, ok := getArtifactDir(m)
+		require.True(t, ok)
+		assert.DirExists(t, got)
+
+		// Should be under outDir/_artifacts/, NOT the mock's ArtifactDir.
+		rel, err := filepath.Rel(outDir, got)
+		require.NoError(t, err)
+		assert.False(t, strings.HasPrefix(rel, ".."),
+			"backfill dir %q should be inside output dir %q", got, outDir)
+	})
+
+	t.Run("artifacts_disabled_ignores_ArtifactDir", func(t *testing.T) {
+		clearArtifactsFlag(t)
+
+		m := &mockTWithArtifacts{
+			mockT:       mockT{},
+			artifactDir: t.TempDir(),
+		}
+
+		dir, ok := getArtifactDir(m)
+		assert.False(t, ok)
+		assert.Empty(t, dir, "should not return a dir when artifacts are disabled")
 	})
 }
 

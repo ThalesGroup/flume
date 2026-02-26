@@ -216,15 +216,18 @@ func TestStartArtifacts(t *testing.T) {
 	// Save and restore original state
 	oldDisabled := Disabled()
 	oldVerbose := Verbose()
+	oldArtifacts := Artifacts()
 
 	defer func() {
 		SetDisabled(oldDisabled)
 		SetVerbose(oldVerbose)
+		SetArtifacts(oldArtifacts)
 	}()
 
 	t.Run("success_no_artifact_file", func(t *testing.T) {
 		dir := t.TempDir()
 		setArtifactsFlag(t)
+		setNativeArtifactsFlag(t)
 
 		m := &mockTWithArtifacts{mockT: mockT{}, artifactDir: dir}
 		revert := Start(m)
@@ -242,6 +245,7 @@ func TestStartArtifacts(t *testing.T) {
 	t.Run("verbose_writes_to_file_on_success", func(t *testing.T) {
 		dir := t.TempDir()
 		setArtifactsFlag(t)
+		setNativeArtifactsFlag(t)
 		SetVerbose(true)
 
 		m := &mockTWithArtifacts{mockT: mockT{}, artifactDir: dir}
@@ -260,6 +264,7 @@ func TestStartArtifacts(t *testing.T) {
 	t.Run("no_tlog_output_on_failure", func(t *testing.T) {
 		dir := t.TempDir()
 		setArtifactsFlag(t)
+		setNativeArtifactsFlag(t)
 
 		m := &mockTWithArtifacts{mockT: mockT{failed: true}, artifactDir: dir}
 		revert := Start(m)
@@ -276,6 +281,7 @@ func TestStartArtifacts(t *testing.T) {
 	t.Run("panic_is_repanicked", func(t *testing.T) {
 		dir := t.TempDir()
 		setArtifactsFlag(t)
+		setNativeArtifactsFlag(t)
 
 		m := &mockTWithArtifacts{mockT: mockT{}, artifactDir: dir}
 
@@ -289,17 +295,15 @@ func TestStartArtifacts(t *testing.T) {
 	})
 }
 
-func TestArtifactsEnabled(t *testing.T) {
-	// Clean up any flags we register during the test.
-	// We can't unregister flags, so we test with fresh names via Lookup behavior.
+func TestArtifacts(t *testing.T) {
 	t.Run("not_set", func(t *testing.T) {
 		clearArtifactsFlag(t)
-		assert.False(t, artifactsEnabled())
+		assert.False(t, Artifacts())
 	})
 
-	t.Run("artifacts_flag", func(t *testing.T) {
+	t.Run("set", func(t *testing.T) {
 		setArtifactsFlag(t)
-		assert.True(t, artifactsEnabled())
+		assert.True(t, Artifacts())
 	})
 }
 
@@ -315,20 +319,14 @@ func findArtifactLog(t *testing.T, dir string) string {
 	return matches[0]
 }
 
-// setArtifactsFlag enables whichever artifacts flag is registered.
+// setArtifactsFlag temporarily enables artifacts for the duration of t.
 func setArtifactsFlag(t *testing.T) {
 	t.Helper()
 
-	for _, name := range []string{"test.artifacts", "artifacts"} {
-		if f := flag.CommandLine.Lookup(name); f != nil {
-			require.NoError(t, flag.CommandLine.Set(name, "true"))
-			t.Cleanup(func() { _ = flag.CommandLine.Set(name, "false") })
+	old := Artifacts()
 
-			return
-		}
-	}
-
-	t.Fatal("no artifacts flag found")
+	SetArtifacts(true)
+	t.Cleanup(func() { SetArtifacts(old) })
 }
 
 type mockTWithArtifacts struct {
@@ -339,6 +337,238 @@ type mockTWithArtifacts struct {
 
 func (m *mockTWithArtifacts) ArtifactDir() string {
 	return m.artifactDir
+}
+
+// setNativeArtifactsFlag registers (if needed) and enables the go1.26
+// test.artifacts flag for the duration of t.
+func setNativeArtifactsFlag(t *testing.T) {
+	t.Helper()
+
+	f := flagSet.Lookup("test.artifacts")
+	if f == nil {
+		// Pre-go1.26: register the flag so the test can exercise the 1.26 path.
+		flagSet.Bool("test.artifacts", false, "")
+		f = flagSet.Lookup("test.artifacts")
+	}
+
+	old := f.Value.String()
+
+	require.NoError(t, flagSet.Set("test.artifacts", "true"))
+	t.Cleanup(func() { _ = flagSet.Set("test.artifacts", old) })
+}
+
+// clearNativeArtifactsFlag ensures the go1.26 test.artifacts flag is false
+// for the duration of t.
+func clearNativeArtifactsFlag(t *testing.T) {
+	t.Helper()
+
+	f := flagSet.Lookup("test.artifacts")
+	if f == nil {
+		return
+	}
+
+	old := f.Value.String()
+
+	require.NoError(t, flagSet.Set("test.artifacts", "false"))
+	t.Cleanup(func() { _ = flagSet.Set("test.artifacts", old) })
+}
+
+func TestInitialize(t *testing.T) {
+	// unsetenv removes an environment variable for the duration of the test.
+	unsetenv := func(t *testing.T, key string) {
+		t.Helper()
+
+		if old, ok := os.LookupEnv(key); ok {
+			require.NoError(t, os.Unsetenv(key))
+			t.Cleanup(func() { os.Setenv(key, old) }) //nolint:usetesting
+		}
+	}
+
+	// setup resets all global state, injects a fresh flag set, and clears all
+	// relevant env vars, restoring everything when the subtest ends.
+	setup := func(t *testing.T) {
+		t.Helper()
+
+		oldD, oldV, oldA := disabledPtr, verbosePtr, artifactsPtr
+		oldOnce := initializeOnce
+		oldFlagSet := flagSet
+
+		t.Cleanup(func() {
+			disabledPtr = oldD
+			verbosePtr = oldV
+			artifactsPtr = oldA
+			initializeOnce = oldOnce
+			flagSet = oldFlagSet
+		})
+
+		disabledPtr = nil
+		verbosePtr = nil
+		artifactsPtr = nil
+		initializeOnce = &sync.Once{}
+		flagSet = flag.NewFlagSet("test", flag.ContinueOnError)
+
+		unsetenv(t, "FLUMETEST_DISABLE")
+		unsetenv(t, "FLUME_TEST_DISABLE")
+		unsetenv(t, "FLUMETEST_VERBOSE")
+		unsetenv(t, "FLUMETEST_ARTIFACTS")
+	}
+
+	t.Run("defaults", func(t *testing.T) {
+		setup(t)
+
+		initialize()
+
+		assert.False(t, *disabledPtr)
+		assert.False(t, *verbosePtr)
+		assert.False(t, *artifactsPtr)
+	})
+
+	// --- disabled ---
+
+	t.Run("disabled/env_var", func(t *testing.T) {
+		setup(t)
+		t.Setenv("FLUMETEST_DISABLE", "true")
+
+		initialize()
+
+		assert.True(t, *disabledPtr)
+	})
+
+	t.Run("disabled/v1_compat_fallback", func(t *testing.T) {
+		setup(t)
+		t.Setenv("FLUME_TEST_DISABLE", "true")
+
+		initialize()
+
+		assert.True(t, *disabledPtr)
+	})
+
+	t.Run("disabled/v2_env_takes_precedence_over_v1", func(t *testing.T) {
+		setup(t)
+		t.Setenv("FLUMETEST_DISABLE", "false")
+		t.Setenv("FLUME_TEST_DISABLE", "true")
+
+		initialize()
+
+		assert.False(t, *disabledPtr)
+	})
+
+	t.Run("disabled/pointer_already_set_skips_env", func(t *testing.T) {
+		setup(t)
+		t.Setenv("FLUMETEST_DISABLE", "true")
+
+		b := false
+		disabledPtr = &b
+
+		initialize()
+
+		assert.False(t, *disabledPtr, "env var should be ignored when pointer is already set")
+	})
+
+	// --- verbose ---
+
+	t.Run("verbose/env_var", func(t *testing.T) {
+		setup(t)
+		t.Setenv("FLUMETEST_VERBOSE", "true")
+
+		initialize()
+
+		assert.True(t, *verbosePtr)
+	})
+
+	t.Run("verbose/pointer_already_set_skips_env", func(t *testing.T) {
+		setup(t)
+		t.Setenv("FLUMETEST_VERBOSE", "true")
+
+		b := false
+		verbosePtr = &b
+
+		initialize()
+
+		assert.False(t, *verbosePtr, "env var should be ignored when pointer is already set")
+	})
+
+	// --- artifacts ---
+
+	t.Run("artifacts/env_var_true", func(t *testing.T) {
+		setup(t)
+		t.Setenv("FLUMETEST_ARTIFACTS", "true")
+
+		initialize()
+
+		assert.True(t, *artifactsPtr)
+	})
+
+	t.Run("artifacts/env_var_false", func(t *testing.T) {
+		setup(t)
+		t.Setenv("FLUMETEST_ARTIFACTS", "false")
+
+		initialize()
+
+		assert.False(t, *artifactsPtr)
+	})
+
+	t.Run("artifacts/native_flag_true", func(t *testing.T) {
+		setup(t)
+		flagSet.Bool("test.artifacts", false, "")
+		require.NoError(t, flagSet.Set("test.artifacts", "true"))
+
+		initialize()
+
+		assert.True(t, *artifactsPtr, "should honor the go1.26 test.artifacts flag")
+	})
+
+	t.Run("artifacts/native_flag_false", func(t *testing.T) {
+		setup(t)
+		flagSet.Bool("test.artifacts", false, "")
+
+		initialize()
+
+		assert.False(t, *artifactsPtr, "native flag defaults to false")
+	})
+
+	t.Run("artifacts/env_true_overrides_native_false", func(t *testing.T) {
+		setup(t)
+		t.Setenv("FLUMETEST_ARTIFACTS", "true")
+		flagSet.Bool("test.artifacts", false, "")
+
+		initialize()
+
+		assert.True(t, *artifactsPtr, "env var should take precedence over native flag")
+	})
+
+	t.Run("artifacts/env_false_overrides_native_true", func(t *testing.T) {
+		setup(t)
+		t.Setenv("FLUMETEST_ARTIFACTS", "false")
+		flagSet.Bool("test.artifacts", false, "")
+		require.NoError(t, flagSet.Set("test.artifacts", "true"))
+
+		initialize()
+
+		assert.False(t, *artifactsPtr, "env var should take precedence over native flag")
+	})
+
+	t.Run("artifacts/no_native_flag_no_env", func(t *testing.T) {
+		setup(t)
+
+		initialize()
+
+		assert.False(t, *artifactsPtr, "should default to false when neither env nor native flag is set")
+	})
+
+	t.Run("artifacts/pointer_already_set_skips_env_and_flag", func(t *testing.T) {
+		setup(t)
+		t.Setenv("FLUMETEST_ARTIFACTS", "true")
+		flagSet.Bool("test.artifacts", false, "")
+		require.NoError(t, flagSet.Set("test.artifacts", "true"))
+
+		b := false
+		artifactsPtr = &b
+
+		initialize()
+
+		assert.False(t, *artifactsPtr, "env and flag should be ignored when pointer is already set")
+	})
 }
 
 func TestSnapshot(t *testing.T) {

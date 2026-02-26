@@ -12,23 +12,9 @@
 //	FLUMETEST_DISABLE=true     // Makes Start() a no-op
 //	FLUMETEST_VERBOSE=true     // Start() will forward each log message to t.Log() immediately
 //	                           // aliased to FLUME_TEST_VERBOSE for backward compatibility with v1
-//
-// Command line flags:
-//
-//	-artifacts
-//		Save logs to artifact files, rather than dumping them to t.Log().  Artifacts are
-//		stored in folders under $outputdir/_artifacts/.
-//
-// Note: This is a native flag in go1.26, but we backfill for older versions of go.
-// In older versions, because it is a backfilled flag, it must come after the package argument:
-//
-// pre go1.26:
-//
-//	go test -v -outputdir build . -artifacts
-//
-// go1.26+:
-//
-//	go test -v -artifacts -outputdir build
+//	FLUMETEST_ARTIFACTS=true   // Save logs to artifact files.  When unset, go1.26's native
+//	                           // -test.artifacts flag is used as a fallback.  When set, it
+//	                           // takes precedence over the native flag.
 package flumetest
 
 import (
@@ -44,10 +30,15 @@ import (
 )
 
 var (
-	disabledPtr *bool
-	verbosePtr  *bool
+	disabledPtr  *bool
+	verbosePtr   *bool
+	artifactsPtr *bool
 
-	initializeOnce sync.Once
+	initializeOnce = &sync.Once{}
+
+	// flagSet is the flag set used for registering and looking up command line flags.
+	// Defaults to flag.CommandLine; tests can replace it with a fresh *flag.FlagSet.
+	flagSet = flag.CommandLine
 )
 
 func Disabled() bool {
@@ -70,6 +61,17 @@ func SetVerbose(verbose bool) {
 	initialize()
 
 	*verbosePtr = verbose
+}
+
+func Artifacts() bool {
+	initialize()
+	return artifactsPtr != nil && *artifactsPtr
+}
+
+func SetArtifacts(artifacts bool) {
+	initialize()
+
+	*artifactsPtr = artifacts
 }
 
 // do not read the environment in init().  Using init() to read the environment
@@ -96,6 +98,20 @@ func initialize() {
 			b, _ = strconv.ParseBool(os.Getenv("FLUMETEST_VERBOSE"))
 			verbosePtr = &b
 		}
+
+		if artifactsPtr == nil {
+			var b bool
+
+			// FLUMETEST_ARTIFACTS takes precedence over the native flag.
+			// When unset, fall back to go1.26's -test.artifacts flag.
+			if s, ok := os.LookupEnv("FLUMETEST_ARTIFACTS"); ok {
+				b, _ = strconv.ParseBool(s)
+			} else {
+				b = nativeArtifactsFlag()
+			}
+
+			artifactsPtr = &b
+		}
 	})
 }
 
@@ -108,8 +124,8 @@ func initialize() {
 //
 // If you wish to use these flags in your tests, you should call this in TestMain().
 func RegisterFlags() {
-	disabledPtr = flag.Bool("disable-flumetest", false, "Disables all flumetest features: logging will happen as normal")
-	verbosePtr = flag.Bool("vv", false, "During tests, forwards all logs immediately to t.Log()")
+	disabledPtr = flagSet.Bool("disable-flumetest", false, "Disables all flumetest features: logging will happen as normal")
+	verbosePtr = flagSet.Bool("vv", false, "During tests, forwards all logs immediately to t.Log()")
 }
 
 // Start captures all logs written during the test.  If the test succeeds, the
@@ -138,7 +154,7 @@ func Start(t testingTB) func() {
 	revertToSnapshot := Snapshot(flume.Default())
 
 	verbose := Verbose()
-	artifacts := artifactsEnabled()
+	artifacts := Artifacts()
 
 	if verbose && !artifacts {
 		t.Cleanup(revertToSnapshot)
