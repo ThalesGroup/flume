@@ -14,6 +14,13 @@
 //
 // This has the benefit of interleaving the application logs with your test logs, and leveraging
 // the test packages behavior of only printing the logs if the test fails.
+//
+// Environment variables can be used to customize behavior:
+//
+//	FLUME_TEST_VERBOSE=true    // Start() will forward each log message to t.Log() immediately
+//	FLUMETEST_ARTIFACTS=true   // Save logs to artifact files.  When unset, go1.26's native
+//	                           // -test.artifacts flag is used as a fallback.  When set, it
+//	                           // takes precedence over the native flag.
 package flumetest
 
 import (
@@ -31,6 +38,11 @@ import (
 
 var Verbose bool
 var ConfigString string
+var Artifacts bool
+
+// flagSet is the flag set used for registering and looking up command line flags.
+// Defaults to flag.CommandLine; tests can replace it with a fresh *flag.FlagSet.
+var flagSet = flag.CommandLine
 
 //nolint:gochecknoinits
 func init() {
@@ -39,6 +51,14 @@ func init() {
 
 	Verbose, _ = strconv.ParseBool(os.Getenv("FLUME_TEST_VERBOSE"))
 	ConfigString = os.Getenv("FLUME_TEST_CONFIG_STRING")
+
+	// FLUMETEST_ARTIFACTS takes precedence over the native flag.
+	// When unset, fall back to go1.26's -test.artifacts flag.
+	if s, ok := os.LookupEnv("FLUMETEST_ARTIFACTS"); ok {
+		Artifacts, _ = strconv.ParseBool(s)
+	} else {
+		Artifacts = nativeArtifactsFlag()
+	}
 }
 
 // SetDefaults sets default options on the package-level flume factory which are appropriate for tests.
@@ -118,44 +138,66 @@ func (l *lockedBuf) String() string {
 	return l.buf.String()
 }
 
+func (l *lockedBuf) Bytes() []byte {
+	l.Lock()
+	defer l.Unlock()
+	return l.buf.Bytes()
+}
+
 type testingTB interface {
 	Failed() bool
 	Log(args ...interface{})
 	Cleanup(func())
+	Name() string
 }
 
 func start(t testingTB) func() {
-	var revert func()
-	if Verbose {
-		revert = flume.SetOut(flume.LogFuncWriter(t.Log, true))
-	} else {
-		// need to use a synchronized version of buf, since
-		// logs may be written on other goroutines than this one,
-		// and bytes.Buffer is not concurrent safe.
-		buf := &lockedBuf{
-			buf: bytes.NewBuffer(nil),
-		}
-		revertOut := flume.SetOut(buf)
+	artifacts := Artifacts
 
-		// since we're calling this function via t.Cleanup *and* returning
-		// the function so the caller can call it with defer, there is a good
-		// chance it will be called twice.  I can't use sync.Once here, because
-		// if recover() is called inside the Once func, it doesn't work.  recover()
-		// must be called directly in the deferred function
-		ran := atomic.Bool{}
-		revert = func() {
-			if !ran.CompareAndSwap(false, true) {
-				return
-			}
-			revertOut()
-			// make sure that if the test panics or fails, we dump the logs
-			recovered := recover()
-			if buf.Len() > 0 && (recovered != nil || t.Failed()) {
-				t.Log(buf.String())
-			}
-			if recovered != nil {
-				panic(recovered)
-			}
+	if Verbose && !artifacts {
+		revertOut := flume.SetOut(flume.LogFuncWriter(t.Log, true))
+		t.Cleanup(revertOut)
+
+		return revertOut
+	}
+
+	// need to use a synchronized version of buf, since
+	// logs may be written on other goroutines than this one,
+	// and bytes.Buffer is not concurrent safe.
+	buf := &lockedBuf{
+		buf: bytes.NewBuffer(nil),
+	}
+	revertOut := flume.SetOut(buf)
+
+	// since we're calling this function via t.Cleanup *and* returning
+	// the function so the caller can call it with defer, there is a good
+	// chance it will be called twice.  I can't use sync.Once here, because
+	// if recover() is called inside the Once func, it doesn't work.  recover()
+	// must be called directly in the deferred function
+	ran := atomic.Bool{}
+	revert := func() {
+		if !ran.CompareAndSwap(false, true) {
+			return
+		}
+		revertOut()
+		// make sure that if the test panics or fails, we re-panic after cleanup
+		recovered := recover()
+
+		failed := recovered != nil || t.Failed()
+
+		// Save to artifact file on failure/panic, or always when verbose.
+		// On success without verbose, discard logs (don't create artifact dir).
+		saveArtifact := artifacts && (failed || Verbose)
+
+		if saveArtifact && buf.Len() > 0 {
+			writeArtifact(t, buf.Bytes())
+		} else if buf.Len() > 0 && failed {
+			// no artifact file: dump to t.Log on failure
+			t.Log(buf.String())
+		}
+
+		if recovered != nil {
+			panic(recovered)
 		}
 	}
 
