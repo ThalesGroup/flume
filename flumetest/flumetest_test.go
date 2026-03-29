@@ -37,11 +37,20 @@ func (m *mockT) Failed() bool {
 func (m *mockT) Log(args ...interface{}) {
 	m.Lock()
 	defer m.Unlock()
-	_, _ = fmt.Fprint(&m.logs, args...)
+	_, _ = fmt.Fprintln(&m.logs, args...)
+}
+
+func (m *mockT) Name() string {
+	return "TestSomething"
 }
 
 func TestStart(t *testing.T) {
 	var log = flume.New("TestStart")
+
+	// Ensure artifacts are disabled for these basic tests.
+	oldArtifacts := Artifacts
+	Artifacts = false
+	t.Cleanup(func() { Artifacts = oldArtifacts })
 
 	tests := []struct {
 		name     string
