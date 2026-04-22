@@ -183,11 +183,15 @@ func TestStart(t *testing.T) {
 			// restore the original values after the test
 			oldDisabled := Disabled()
 			oldVerbose := Verbose()
+			oldArtifacts := Artifacts()
 
 			defer func() {
 				SetDisabled(oldDisabled)
 				SetVerbose(oldVerbose)
+				SetArtifacts(oldArtifacts)
 			}()
+
+			SetArtifacts(false)
 
 			m := mockT{
 				failed: test.failTest,
@@ -569,6 +573,190 @@ func TestInitialize(t *testing.T) {
 
 		assert.False(t, *artifactsPtr, "env and flag should be ignored when pointer is already set")
 	})
+}
+
+// disableArtifactsForTest disables artifact capture for the duration of t,
+// restoring the previous setting on cleanup. This matches the behavior tested
+// here, which exercises Start's in-memory capture/replay path rather than
+// the file-artifact path.
+func disableArtifactsForTest(t *testing.T) {
+	t.Helper()
+
+	old := Artifacts()
+
+	SetArtifacts(false)
+	t.Cleanup(func() { SetArtifacts(old) })
+}
+
+// TestParallelOverlapCaptures verifies the end-to-end fan-out wiring through
+// Start(): overlapping subscribers each receive all logs emitted during their
+// active windows. This is the primary integration test for the mux fan-out;
+// it also exercises sibling capture semantics.
+func TestParallelOverlapCaptures(t *testing.T) {
+	disableArtifactsForTest(t)
+
+	log := flume.New("parallel-test")
+
+	mockA := &mockTOldGo{mockT: mockT{failed: true}, name: "TestParallelOverlapCaptures/a"}
+	mockB := &mockTOldGo{mockT: mockT{failed: true}, name: "TestParallelOverlapCaptures/b"}
+
+	revertA := Start(mockA)
+
+	log.Info("PRE-A")
+
+	revertB := Start(mockB)
+
+	log.Info("OVERLAP-1")
+	log.Info("OVERLAP-2")
+
+	revertA()
+	log.Info("POST-A")
+	revertB()
+
+	aLogs := mockA.logs.String()
+	bLogs := mockB.logs.String()
+
+	assert.Contains(t, aLogs, "PRE-A")
+	assert.Contains(t, aLogs, "OVERLAP-1")
+	assert.Contains(t, aLogs, "OVERLAP-2")
+	assert.NotContains(t, aLogs, "POST-A")
+
+	assert.Contains(t, bLogs, "OVERLAP-1")
+	assert.Contains(t, bLogs, "OVERLAP-2")
+	assert.Contains(t, bLogs, "POST-A")
+	assert.NotContains(t, bLogs, "PRE-A")
+}
+
+// TestNestedSuppression verifies that when a child Start is active, the
+// ancestor's capture is suspended; it resumes when the child finishes.
+func TestNestedSuppression(t *testing.T) {
+	disableArtifactsForTest(t)
+
+	log := flume.New("nested-test")
+
+	parentMock := &mockTOldGo{mockT: mockT{failed: true}, name: "TestNestedSuppression/parent"}
+	childMock := &mockTOldGo{mockT: mockT{failed: true}, name: "TestNestedSuppression/parent/child"}
+
+	revertParent := Start(parentMock)
+
+	log.Info("parent-before")
+
+	revertChild := Start(childMock)
+
+	log.Info("child-only")
+	revertChild()
+
+	log.Info("parent-after")
+	revertParent()
+
+	parentLogs := parentMock.logs.String()
+	childLogs := childMock.logs.String()
+
+	assert.Contains(t, childLogs, "child-only")
+	assert.NotContains(t, childLogs, "parent-before")
+	assert.NotContains(t, childLogs, "parent-after")
+
+	assert.Contains(t, parentLogs, "parent-before")
+	assert.Contains(t, parentLogs, "parent-after")
+	assert.NotContains(t, parentLogs, "child-only")
+}
+
+// TestOrphanAncestor verifies that subscribing with a subtest-style name
+// whose ancestor has no active subscriber works without panic.
+func TestOrphanAncestor(t *testing.T) {
+	disableArtifactsForTest(t)
+
+	log := flume.New("orphan-test")
+
+	mock := &mockTOldGo{mockT: mockT{failed: true}, name: "TestOrphan/sub"}
+
+	assert.NotPanics(t, func() {
+		revert := Start(mock)
+
+		log.Info("orphan")
+		revert()
+	})
+
+	assert.Contains(t, mock.logs.String(), "orphan")
+}
+
+// TestDoubleStartIsNoOp verifies that calling Start twice for the same test
+// name (while the first is still active) is a no-op: it does not panic, emits
+// a warning via t.Log, and returns a no-op revert. The outer Start's capture
+// remains in effect and is flushed when the outer revert runs.
+func TestDoubleStartIsNoOp(t *testing.T) {
+	disableArtifactsForTest(t)
+
+	log := flume.New("double-start-test")
+
+	mock := &mockTOldGo{mockT: mockT{failed: true}, name: "TestDoubleStartIsNoOp/target"}
+
+	revert1 := Start(mock)
+
+	log.Info("before-double-start")
+
+	var revert2 func()
+
+	require.NotPanics(t, func() {
+		revert2 = Start(mock)
+	})
+	require.NotNil(t, revert2)
+
+	log.Info("after-double-start")
+
+	// Inner revert is a no-op; calling it must not unsubscribe the outer
+	// capture or otherwise disrupt log collection.
+	revert2()
+
+	log.Info("after-inner-revert")
+
+	revert1()
+
+	logs := mock.logs.String()
+	assert.Contains(t, logs, "flumetest: Start already active for ", "expected warning via t.Log")
+	assert.Contains(t, logs, "before-double-start", "outer capture should include logs before duplicate Start")
+	assert.Contains(t, logs, "after-double-start", "outer capture should include logs while inner Start was active")
+	assert.Contains(t, logs, "after-inner-revert", "outer capture should remain active after inner revert")
+}
+
+// TestStart_releases_buffer_after_revert verifies that the per-test capture
+// buffer is released (buf set to nil) after revert runs, making the bytes
+// eligible for garbage collection even though the closure is still retained.
+func TestStart_releases_buffer_after_revert(t *testing.T) {
+	disableArtifactsForTest(t)
+
+	log := flume.New("release-test")
+
+	mock := &mockTOldGo{mockT: mockT{}, name: "TestStart_releases_buffer_after_revert/inner"}
+
+	// Capture the subscriber via a small test hook: subscribe directly so we
+	// can inspect the subscriber's internal state after revert.
+	ensureMuxInstalled()
+
+	_, sub, existing := globalMux.Subscribe(mock.Name())
+	require.False(t, existing)
+
+	// Write some data to establish a non-empty buffer.
+	_, _ = sub.Write([]byte("some captured log data"))
+	require.Equal(t, 22, sub.Len(), "buffer should be non-empty before revert")
+
+	// Now simulate what Start does: call Free (which is what defer sub.Free() does in revert).
+	// Here we don't use Start() itself to avoid the double-subscribe complexity;
+	// instead we verify Free() directly as the mechanism triggered by revert.
+	sub.Free()
+
+	// After Free, buf must be nil and accessors must return zero values.
+	assert.Nil(t, sub.buf, "buf should be nil after Free")
+	assert.Equal(t, 0, sub.Len(), "Len should be 0 after Free")
+	assert.Empty(t, sub.String(), "String should be empty after Free")
+
+	// A subsequent write must be a no-op.
+	log.Info("after revert write")
+
+	n, err := sub.Write([]byte("post-free write"))
+	require.NoError(t, err)
+	assert.Equal(t, 15, n, "Write should return len(p) after Free")
+	assert.Equal(t, 0, sub.Len(), "Len should still be 0 after post-Free write")
 }
 
 func TestSnapshot(t *testing.T) {

@@ -10,7 +10,7 @@
 // Environment variables can be used to customize behavior:
 //
 //	FLUMETEST_DISABLE=true     // Makes Start() a no-op
-//	FLUMETEST_VERBOSE=true     // Start() will forward each log message to t.Log() immediately
+//	FLUMETEST_VERBOSE=true     // Start() flushes captured logs at test end even on success.
 //	                           // aliased to FLUME_TEST_VERBOSE for backward compatibility with v1
 //	FLUMETEST_ARTIFACTS=true   // Save logs to artifact files.  When unset, go1.26's native
 //	                           // -test.artifacts flag is used as a fallback.  When set, it
@@ -18,7 +18,6 @@
 package flumetest
 
 import (
-	"bytes"
 	"flag"
 	"io"
 	"os"
@@ -125,14 +124,29 @@ func initialize() {
 // If you wish to use these flags in your tests, you should call this in TestMain().
 func RegisterFlags() {
 	disabledPtr = flagSet.Bool("disable-flumetest", false, "Disables all flumetest features: logging will happen as normal")
-	verbosePtr = flagSet.Bool("vv", false, "During tests, forwards all logs immediately to t.Log()")
+	verbosePtr = flagSet.Bool("vv", false, "Flush captured logs at test end even on success")
 }
 
 // Start captures all logs written during the test.  If the test succeeds, the
-// captured logs are discard.  If the test fails, the captured logs are dumped
+// captured logs are discarded.  If the test fails, the captured logs are dumped
 // to the t.Log() method.
 //
-// If Verbose is true, logs are forwarded directly to t.Log() as they occur.
+// In parallel tests, Start captures all flume output emitted while the test is
+// active. When tests overlap, each active test receives the full shared output
+// for the overlap window. Logs from other concurrently running tests may appear
+// in the captured output.
+//
+// Nested Start() calls (e.g. in subtests) take over from ancestor captures:
+// during a subtest's window, the parent's capture is suspended and the child's
+// is active. The parent resumes when the subtest ends.
+//
+// If Start is called more than once for the same test (same t.Name()) while a
+// prior capture is still active, subsequent calls are a no-op: a warning is
+// emitted via t.Log and a no-op revert function is returned. The original
+// capture remains in effect and is flushed when the outer Start's revert runs.
+//
+// If Verbose is true, captured logs are flushed at test end even on success.
+// (Previously: live-streamed to t.Log during execution. That behavior has changed.)
 // If Disable is true, Start does nothing.
 //
 //	func TestSomething(t *testing.T) {
@@ -141,9 +155,9 @@ func RegisterFlags() {
 //	}
 //
 // The return value is a function which flushes the buffer, either to t.Log() if
-// the test is failing, or discarding them if the test is not failing.
+// the test is failing (or Verbose is set), or discarding them if the test passes.
 // This function is called automatically when the test ends, but it's sometimes
-// useful to flush ear logs from setup code, then starting a new buffer for the
+// useful to flush early logs from setup code, then starting a new buffer for the
 // body of the test.
 func Start(t testingTB) func() {
 	if Disabled() {
@@ -151,24 +165,17 @@ func Start(t testingTB) func() {
 		return func() {}
 	}
 
-	revertToSnapshot := Snapshot(flume.Default())
+	ensureMuxInstalled()
 
 	verbose := Verbose()
 	artifacts := Artifacts()
 
-	if verbose && !artifacts {
-		t.Cleanup(revertToSnapshot)
-		flume.Default().SetOut(flume.LogFuncWriter(t.Log, true))
+	id, sub, existing := globalMux.Subscribe(t.Name())
+	if existing {
+		t.Log("flumetest: Start already active for " + t.Name() + "; returning no-op (logs captured by outer Start)")
 
-		return revertToSnapshot
+		return func() {}
 	}
-
-	var (
-		mu  sync.Mutex
-		buf = bytes.NewBuffer(nil)
-	)
-
-	flume.Default().SetOut(&syncWriter{w: buf, mu: &mu})
 
 	// since we're calling this function via t.Cleanup *and* returning
 	// the function so the caller can call it with defer, there is a good
@@ -181,10 +188,10 @@ func Start(t testingTB) func() {
 			return
 		}
 
-		revertToSnapshot()
+		defer sub.Free()
 
-		mu.Lock()
-		defer mu.Unlock()
+		// Unsubscribe first so no new writes land in sub after this point.
+		globalMux.Unsubscribe(id)
 
 		// make sure that if the test panics, we re-panic after cleanup
 		recovered := recover()
@@ -195,11 +202,11 @@ func Start(t testingTB) func() {
 		// On success without verbose, discard logs (don't create artifact dir).
 		saveArtifact := artifacts && (failed || verbose)
 
-		if saveArtifact && buf.Len() > 0 {
-			writeArtifact(t, buf.Bytes())
-		} else if buf.Len() > 0 && failed {
-			// no artifact file: dump to t.Log on failure
-			t.Log(buf.String())
+		if saveArtifact && sub.Len() > 0 {
+			writeArtifact(t, sub)
+		} else if sub.Len() > 0 && (failed || verbose) {
+			// no artifact file: dump to t.Log on failure or when verbose
+			t.Log(sub.String())
 		}
 
 		if recovered != nil {
@@ -216,8 +223,8 @@ func Start(t testingTB) func() {
 	// 3. the revert function doesn't flush its captured logs as it should when a test fails
 	//
 	// So we do both: call the revert function via t.Cleanup, as well as return a function
-	// that the test can call via defer.  t.Cleanup ensures we as least return the state
-	// of the system, even if the test itself doesn't call the revert cleanup function,
+	// that the test can call via defer.  t.Cleanup ensures we at least clean up state,
+	// even if the test itself doesn't call the revert cleanup function,
 	// but returning the cleanup function as well means tests that *do* call it via defer
 	// will correctly handle test panics.
 	//
@@ -227,23 +234,19 @@ func Start(t testingTB) func() {
 	return revert
 }
 
-func writeArtifact(t testingTB, data []byte) {
+func writeArtifact(t testingTB, src io.WriterTo) {
 	artifactFile := openArtifactFile(t)
 	if artifactFile == nil {
 		return
 	}
 	defer artifactFile.Close()
 
-	_, _ = artifactFile.Write(data)
+	_, _ = src.WriteTo(artifactFile)
 }
 
 // Snapshot returns a function which will revert the configuration
 // of the given handler to its state at the time Snapshot() was called.
 // The state includes the current output writer, and the handler opts.
-//
-// Start() calls Snapshot internally, so most tests do not need to call
-// Snapshot directly.  Snapshot is exported for advanced use cases that
-// need custom snapshot/restore patterns outside of the Start() flow.
 //
 // Example:
 //
@@ -265,16 +268,4 @@ type testingTB interface {
 	Log(args ...any)
 	Cleanup(func())
 	Name() string
-}
-
-type syncWriter struct {
-	w  io.Writer
-	mu sync.Locker
-}
-
-func (s *syncWriter) Write(p []byte) (int, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	return s.w.Write(p) //nolint:wrapcheck
 }
