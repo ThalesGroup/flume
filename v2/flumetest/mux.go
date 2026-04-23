@@ -49,9 +49,11 @@ type subscriberSnapshot struct {
 
 // subscriber holds a single test's capture buffer.
 type subscriber struct {
-	mu     sync.Mutex
-	buf    *bytes.Buffer
-	closed atomic.Bool
+	mu      sync.Mutex
+	buf     *bytes.Buffer
+	closed  atomic.Bool
+	bufCap  int // maximum bytes retained; 0 means unlimited
+	dropped int // cumulative bytes discarded due to cap
 }
 
 // Compile-time interface assertions.
@@ -112,7 +114,7 @@ func nameDepth(name string) int {
 // returns (0, nil, true). Callers should treat the duplicate registration as a
 // no-op (Start surfaces this with a t.Log).
 func (m *multiplexWriter) Subscribe(testName string) (uint64, *subscriber, bool) {
-	sub := newSubscriber()
+	sub := newSubscriber(BufferLimit())
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -190,13 +192,15 @@ func (m *multiplexWriter) rebuildSnapshot() {
 	m.snap.Store(&subscriberSnapshot{items: items})
 }
 
-// newSubscriber constructs a fresh per-test capture buffer.
-func newSubscriber() *subscriber {
-	return &subscriber{buf: bytes.NewBuffer(nil)}
+// newSubscriber constructs a fresh per-test capture buffer with the given byte limit.
+// A bufCap of 0 means unlimited.
+func newSubscriber(bufCap int) *subscriber {
+	return &subscriber{buf: bytes.NewBuffer(nil), bufCap: bufCap}
 }
 
 // Write appends p to the subscriber's buffer. No-ops if the subscriber is closed or freed.
-// Safe to call concurrently.
+// If a bufCap is configured and the buffer exceeds it after writing, the oldest bytes are
+// discarded to bring the buffer back to the cap. Safe to call concurrently.
 func (s *subscriber) Write(p []byte) (int, error) {
 	if s.closed.Load() {
 		return len(p), nil
@@ -209,7 +213,15 @@ func (s *subscriber) Write(p []byte) (int, error) {
 		return len(p), nil
 	}
 
-	return s.buf.Write(p) //nolint:wrapcheck
+	n, _ := s.buf.Write(p) // bytes.Buffer.Write never returns a non-nil error
+
+	if s.bufCap > 0 && s.buf.Len() > s.bufCap {
+		drop := s.buf.Len() - s.bufCap
+		s.buf.Next(drop)
+		s.dropped += drop
+	}
+
+	return n, nil
 }
 
 // Close marks the subscriber as closed. Subsequent Write calls are no-ops.
@@ -229,6 +241,14 @@ func (s *subscriber) Free() {
 	defer s.mu.Unlock()
 
 	s.buf = nil
+}
+
+// Dropped returns the cumulative number of bytes discarded due to the buffer cap.
+func (s *subscriber) Dropped() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.dropped
 }
 
 // Len returns the current byte count in the buffer.

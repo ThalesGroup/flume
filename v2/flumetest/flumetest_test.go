@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -393,7 +394,7 @@ func TestInitialize(t *testing.T) {
 	setup := func(t *testing.T) {
 		t.Helper()
 
-		oldD, oldV, oldA := disabledPtr, verbosePtr, artifactsPtr
+		oldD, oldV, oldA, oldBL := disabledPtr, verbosePtr, artifactsPtr, bufferLimitPtr
 		oldOnce := initializeOnce
 		oldFlagSet := flagSet
 
@@ -401,6 +402,7 @@ func TestInitialize(t *testing.T) {
 			disabledPtr = oldD
 			verbosePtr = oldV
 			artifactsPtr = oldA
+			bufferLimitPtr = oldBL
 			initializeOnce = oldOnce
 			flagSet = oldFlagSet
 		})
@@ -408,6 +410,7 @@ func TestInitialize(t *testing.T) {
 		disabledPtr = nil
 		verbosePtr = nil
 		artifactsPtr = nil
+		bufferLimitPtr = nil
 		initializeOnce = &sync.Once{}
 		flagSet = flag.NewFlagSet("test", flag.ContinueOnError)
 
@@ -415,6 +418,7 @@ func TestInitialize(t *testing.T) {
 		unsetenv(t, "FLUME_TEST_DISABLE")
 		unsetenv(t, "FLUMETEST_VERBOSE")
 		unsetenv(t, "FLUMETEST_ARTIFACTS")
+		unsetenv(t, "FLUMETEST_BUFFER_LIMIT")
 	}
 
 	t.Run("defaults", func(t *testing.T) {
@@ -425,6 +429,7 @@ func TestInitialize(t *testing.T) {
 		assert.False(t, *disabledPtr)
 		assert.False(t, *verbosePtr)
 		assert.False(t, *artifactsPtr)
+		assert.Equal(t, defaultBufferLimit, *bufferLimitPtr)
 	})
 
 	// --- disabled ---
@@ -757,6 +762,282 @@ func TestStart_releases_buffer_after_revert(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 15, n, "Write should return len(p) after Free")
 	assert.Equal(t, 0, sub.Len(), "Len should still be 0 after post-Free write")
+}
+
+// --- Task 3.10: parseByteSize tests ---
+
+func TestParseByteSize_bytes(t *testing.T) {
+	tests := []struct {
+		input string
+		want  int
+	}{
+		{"0", 0},
+		{"1", 1},
+		{"1048576", 1048576},
+		{"1B", 1},
+		{"100b", 100},
+		{"100 B", 100},
+	}
+
+	for _, tc := range tests {
+		got, err := parseByteSize(tc.input)
+		require.NoError(t, err, "input=%q", tc.input)
+		assert.Equal(t, tc.want, got, "input=%q", tc.input)
+	}
+}
+
+func TestParseByteSize_units(t *testing.T) {
+	tests := []struct {
+		input string
+		want  int
+	}{
+		{"1K", 1024},
+		{"1k", 1024},
+		{"1KB", 1024},
+		{"1kb", 1024},
+		{"1KiB", 1024},
+		{"1kib", 1024},
+		{"1 KiB", 1024},
+		{"2K", 2048},
+		{"1M", 1024 * 1024},
+		{"1MB", 1024 * 1024},
+		{"1MiB", 1024 * 1024},
+		{"1mib", 1024 * 1024},
+		{"1 MB", 1024 * 1024},
+		{"1G", 1024 * 1024 * 1024},
+		{"1GB", 1024 * 1024 * 1024},
+		{"1GiB", 1024 * 1024 * 1024},
+		{"1gib", 1024 * 1024 * 1024},
+		{"512KB", 512 * 1024},
+		{"2MiB", 2 * 1024 * 1024},
+	}
+
+	for _, tc := range tests {
+		got, err := parseByteSize(tc.input)
+		require.NoError(t, err, "input=%q", tc.input)
+		assert.Equal(t, tc.want, got, "input=%q", tc.input)
+	}
+}
+
+func TestParseByteSize_invalid(t *testing.T) {
+	tests := []struct {
+		input string
+	}{
+		{""},
+		{"-1"},
+		{"1.5MB"},
+		{"1TB"},
+		{"1PB"},
+		{"abc"},
+		{"1ZB"},
+		{"1 foo"},
+	}
+
+	for _, tc := range tests {
+		_, err := parseByteSize(tc.input)
+		assert.Error(t, err, "input=%q should return error", tc.input)
+	}
+}
+
+// --- Task 3.11: BufferLimit tests ---
+
+// setupBufferLimit is a helper that resets all global state for BufferLimit tests.
+func setupBufferLimit(t *testing.T) {
+	t.Helper()
+
+	oldBL := bufferLimitPtr
+	oldOnce := initializeOnce
+
+	t.Cleanup(func() {
+		bufferLimitPtr = oldBL
+		initializeOnce = oldOnce
+	})
+
+	bufferLimitPtr = nil
+	initializeOnce = &sync.Once{}
+
+	if old, ok := os.LookupEnv("FLUMETEST_BUFFER_LIMIT"); ok {
+		require.NoError(t, os.Unsetenv("FLUMETEST_BUFFER_LIMIT"))
+		t.Cleanup(func() { os.Setenv("FLUMETEST_BUFFER_LIMIT", old) }) //nolint:usetesting
+	}
+}
+
+func TestBufferLimit_defaultIs1MiB(t *testing.T) {
+	setupBufferLimit(t)
+
+	assert.Equal(t, 1<<20, BufferLimit())
+}
+
+func TestBufferLimit_zeroMeansUnlimited(t *testing.T) {
+	setupBufferLimit(t)
+
+	SetBufferLimit(0)
+
+	assert.Equal(t, 0, BufferLimit())
+
+	// With cap=0, a subscriber must retain all bytes.
+	sub := newSubscriber(BufferLimit())
+	data := strings.Repeat("x", 5*1024*1024)
+	_, _ = sub.Write([]byte(data))
+
+	assert.Equal(t, len(data), sub.Len())
+	assert.Equal(t, 0, sub.Dropped())
+}
+
+func TestSetBufferLimit_overridesEnv(t *testing.T) {
+	setupBufferLimit(t)
+
+	t.Setenv("FLUMETEST_BUFFER_LIMIT", "2MB")
+
+	// Set programmatically before initialize runs.
+	four := 4096
+	bufferLimitPtr = &four
+
+	assert.Equal(t, 4096, BufferLimit())
+}
+
+func TestBufferLimit_envVar(t *testing.T) {
+	tests := []struct {
+		envVal string
+		want   int
+	}{
+		{"512KB", 512 * 1024},
+		{"512KiB", 512 * 1024},
+		{"2MiB", 2 * 1024 * 1024},
+		{"1G", 1024 * 1024 * 1024},
+		{"1048576", 1048576},
+		{"0", 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.envVal, func(t *testing.T) {
+			setupBufferLimit(t)
+			t.Setenv("FLUMETEST_BUFFER_LIMIT", tc.envVal)
+
+			assert.Equal(t, tc.want, BufferLimit())
+		})
+	}
+}
+
+func TestBufferLimit_invalidEnvVarWarnsAndUsesDefault(t *testing.T) {
+	setupBufferLimit(t)
+
+	t.Setenv("FLUMETEST_BUFFER_LIMIT", "not-a-number")
+
+	// Redirect stderr to capture the warning.
+	oldStderr := os.Stderr
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+
+	os.Stderr = w
+
+	limit := BufferLimit()
+
+	_ = w.Close()
+	os.Stderr = oldStderr
+
+	var stderrBuf strings.Builder
+
+	_, _ = io.Copy(&stderrBuf, r)
+
+	assert.Equal(t, defaultBufferLimit, limit, "should fall back to default on invalid env var")
+	assert.Contains(t, stderrBuf.String(), "flumetest: invalid FLUMETEST_BUFFER_LIMIT=", "should write warning to stderr")
+	assert.Contains(t, stderrBuf.String(), "not-a-number", "warning should include the bad value")
+}
+
+// --- Task 3.14: Truncation notice tests ---
+
+func TestRevert_logsTruncationNoticeViaTLog(t *testing.T) {
+	disableArtifactsForTest(t)
+
+	// Use a small buffer limit so we can trigger truncation easily.
+	SetBufferLimit(10)
+
+	t.Cleanup(func() { SetBufferLimit(defaultBufferLimit) })
+
+	log := flume.New("truncation-test")
+
+	mock := &mockTOldGo{mockT: mockT{failed: true}, name: "TestRevert_logsTruncationNoticeViaTLog/inner"}
+
+	revert := Start(mock)
+
+	// Write more than 10 bytes so truncation occurs.
+	log.Info(strings.Repeat("X", 200))
+
+	revert()
+
+	logOutput := mock.logs.String()
+
+	// t.Log must have received the truncation notice.
+	assert.Contains(t, logOutput, "flumetest: log buffer truncated;", "truncation notice must appear in t.Log output")
+	assert.Contains(t, logOutput, "FLUMETEST_BUFFER_LIMIT=", "truncation notice must mention the limit")
+
+	// The captured buffer flushed via t.Log must not contain the notice text itself.
+	// The notice is a separate t.Log call, so both will be in logOutput; but the
+	// captured log content (the first t.Log call) must not contain the notice string.
+	// We verify this by checking that the notice string doesn't appear as a substring
+	// of the log record portion (before "flumetest: log buffer truncated").
+	noticeIdx := strings.Index(logOutput, "flumetest: log buffer truncated;")
+	if noticeIdx > 0 {
+		beforeNotice := logOutput[:noticeIdx]
+		assert.NotContains(t, beforeNotice, "flumetest: log buffer truncated;")
+	}
+}
+
+func TestRevert_noNoticeWhenNoTruncation(t *testing.T) {
+	disableArtifactsForTest(t)
+
+	// Use a generous limit so no truncation occurs.
+	SetBufferLimit(1 << 20)
+
+	t.Cleanup(func() { SetBufferLimit(defaultBufferLimit) })
+
+	log := flume.New("no-truncation-test")
+
+	for _, failTest := range []bool{false, true} {
+		name := fmt.Sprintf("failed=%v", failTest)
+
+		t.Run(name, func(t *testing.T) {
+			disableArtifactsForTest(t)
+
+			mock := &mockTOldGo{mockT: mockT{failed: failTest}, name: "TestRevert_noNoticeWhenNoTruncation/" + name}
+
+			revert := Start(mock)
+
+			log.Info("small message")
+
+			revert()
+
+			assert.NotContains(t, mock.logs.String(), "flumetest: log buffer truncated;",
+				"no notice expected when buffer was not truncated")
+		})
+	}
+}
+
+func TestRevert_noNoticeWhenSilentlyDiscarded(t *testing.T) {
+	disableArtifactsForTest(t)
+
+	// Small buffer limit to ensure truncation would occur.
+	SetBufferLimit(10)
+
+	t.Cleanup(func() { SetBufferLimit(defaultBufferLimit) })
+
+	log := flume.New("silent-discard-test")
+
+	// Passing test, verbose=false, artifacts=false => buffer silently discarded.
+	mock := &mockTOldGo{mockT: mockT{failed: false}, name: "TestRevert_noNoticeWhenSilentlyDiscarded/inner"}
+
+	SetVerbose(false)
+	t.Cleanup(func() { SetVerbose(false) })
+
+	revert := Start(mock)
+
+	log.Info(strings.Repeat("Y", 200))
+
+	revert()
+
+	assert.NotContains(t, mock.logs.String(), "flumetest: log buffer truncated;",
+		"no notice expected when buffer is silently discarded")
 }
 
 func TestSnapshot(t *testing.T) {

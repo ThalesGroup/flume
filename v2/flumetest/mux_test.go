@@ -3,6 +3,7 @@ package flumetest
 import (
 	"bytes"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -12,7 +13,7 @@ import (
 )
 
 func TestSubscriber_WriteAndRead(t *testing.T) {
-	sub := newSubscriber()
+	sub := newSubscriber(0)
 
 	n, err := sub.Write([]byte("hello"))
 
@@ -23,7 +24,7 @@ func TestSubscriber_WriteAndRead(t *testing.T) {
 }
 
 func TestSubscriber_WriteAfterClose(t *testing.T) {
-	sub := newSubscriber()
+	sub := newSubscriber(0)
 
 	n, err := sub.Write([]byte("hello"))
 	require.NoError(t, err)
@@ -41,7 +42,7 @@ func TestSubscriber_WriteAfterClose(t *testing.T) {
 }
 
 func TestSubscriber_WriteToNonDestructive(t *testing.T) {
-	sub := newSubscriber()
+	sub := newSubscriber(0)
 
 	n, err := sub.Write([]byte("content"))
 	require.NoError(t, err)
@@ -63,7 +64,7 @@ func TestSubscriber_WriteToNonDestructive(t *testing.T) {
 }
 
 func TestSubscriber_ConcurrentWrites(t *testing.T) {
-	sub := newSubscriber()
+	sub := newSubscriber(0)
 
 	const (
 		goroutines         = 100
@@ -97,7 +98,7 @@ func TestSubscriber_ConcurrentWrites(t *testing.T) {
 }
 
 func TestSubscriber_CloseIsIdempotent(t *testing.T) {
-	sub := newSubscriber()
+	sub := newSubscriber(0)
 
 	assert.NotPanics(t, func() {
 		sub.Close()
@@ -217,6 +218,46 @@ func TestMux_ResubscribeAfterUnsubscribe(t *testing.T) {
 	})
 }
 
+func TestSubscriber_capRetainsMostRecentBytes(t *testing.T) {
+	const bufCap = 1024
+
+	sub := newSubscriber(bufCap)
+
+	// Write 4096 bytes total (3072 then 1024).
+	first := strings.Repeat("A", 3072)
+	last := strings.Repeat("Z", 1024)
+
+	_, _ = sub.Write([]byte(first))
+	_, _ = sub.Write([]byte(last))
+
+	got := sub.String()
+
+	assert.Len(t, got, bufCap, "buffer should contain exactly bufCap bytes")
+	assert.Equal(t, last, got, "buffer should contain the most recent bytes")
+	assert.Equal(t, 3072, sub.Dropped(), "dropped should equal bytes trimmed")
+}
+
+func TestSubscriber_capCapturedAtSubscribeTime(t *testing.T) {
+	// Set buffer limit to 1024, then subscribe.
+	SetBufferLimit(1024)
+	t.Cleanup(func() { SetBufferLimit(defaultBufferLimit) })
+
+	m := newMultiplexWriter(nil)
+
+	_, sub, existing := m.Subscribe("TestFoo/D4")
+	require.False(t, existing)
+
+	// Now change the limit; this must not affect the already-subscribed sub.
+	SetBufferLimit(8192)
+
+	// Write 2048 bytes — if the original cap of 1024 is in effect, the buffer
+	// must be capped at 1024 (not 2048 or 8192).
+	_, _ = sub.Write([]byte(strings.Repeat("X", 2048)))
+
+	assert.Equal(t, 1024, sub.Len(), "subscriber cap must be fixed at Subscribe time")
+	assert.Equal(t, 1024, sub.Dropped(), "dropped bytes must reflect original cap")
+}
+
 func TestUnsubscribe_clears_backing_array_refs(t *testing.T) {
 	m := newMultiplexWriter(nil)
 
@@ -250,7 +291,7 @@ func TestUnsubscribe_clears_backing_array_refs(t *testing.T) {
 
 func TestSubscriber_Free_is_safe(t *testing.T) {
 	t.Run("Free is idempotent", func(t *testing.T) {
-		sub := newSubscriber()
+		sub := newSubscriber(0)
 
 		assert.NotPanics(t, func() {
 			sub.Free()
@@ -260,7 +301,7 @@ func TestSubscriber_Free_is_safe(t *testing.T) {
 	})
 
 	t.Run("post-Free Write is no-op returning len(p) nil", func(t *testing.T) {
-		sub := newSubscriber()
+		sub := newSubscriber(0)
 		sub.Free()
 
 		n, err := sub.Write([]byte("hello"))
@@ -270,7 +311,7 @@ func TestSubscriber_Free_is_safe(t *testing.T) {
 	})
 
 	t.Run("post-Free Len returns 0", func(t *testing.T) {
-		sub := newSubscriber()
+		sub := newSubscriber(0)
 		_, _ = sub.Write([]byte("some content"))
 		sub.Free()
 
@@ -278,7 +319,7 @@ func TestSubscriber_Free_is_safe(t *testing.T) {
 	})
 
 	t.Run("post-Free String returns empty", func(t *testing.T) {
-		sub := newSubscriber()
+		sub := newSubscriber(0)
 		_, _ = sub.Write([]byte("some content"))
 		sub.Free()
 
@@ -286,7 +327,7 @@ func TestSubscriber_Free_is_safe(t *testing.T) {
 	})
 
 	t.Run("post-Free WriteTo returns 0 nil", func(t *testing.T) {
-		sub := newSubscriber()
+		sub := newSubscriber(0)
 		_, _ = sub.Write([]byte("some content"))
 		sub.Free()
 
@@ -300,7 +341,7 @@ func TestSubscriber_Free_is_safe(t *testing.T) {
 	})
 
 	t.Run("concurrent Free and accessor calls are race-free", func(_ *testing.T) {
-		sub := newSubscriber()
+		sub := newSubscriber(0)
 
 		var wg sync.WaitGroup
 

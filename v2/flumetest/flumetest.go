@@ -15,23 +15,37 @@
 //	FLUMETEST_ARTIFACTS=true   // Save logs to artifact files.  When unset, go1.26's native
 //	                           // -test.artifacts flag is used as a fallback.  When set, it
 //	                           // takes precedence over the native flag.
+//	FLUMETEST_BUFFER_LIMIT=<size>  // Maximum bytes retained per test capture buffer.
+//	                               // Accepts a bare integer (bytes) or a human-friendly suffix:
+//	                               // B, K/KB/KiB, M/MB/MiB, G/GB/GiB (all binary; KB == KiB == 1024).
+//	                               // Default: 1MiB (1048576 bytes). Set to 0 for unlimited.
+//	                               // On invalid value, a warning is written to stderr and the
+//	                               // default is used.
 package flumetest
 
 import (
+	"errors"
 	"flag"
+	"fmt"
 	"io"
+	"math"
 	"os"
+	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/ThalesGroup/flume/v2"
 )
 
+const defaultBufferLimit = 1 << 20 // 1 MiB
+
 var (
-	disabledPtr  *bool
-	verbosePtr   *bool
-	artifactsPtr *bool
+	disabledPtr    *bool
+	verbosePtr     *bool
+	artifactsPtr   *bool
+	bufferLimitPtr *int
 
 	initializeOnce = &sync.Once{}
 
@@ -39,6 +53,78 @@ var (
 	// Defaults to flag.CommandLine; tests can replace it with a fresh *flag.FlagSet.
 	flagSet = flag.CommandLine
 )
+
+// BufferLimit returns the maximum number of bytes retained per test capture buffer.
+// A value of 0 means unlimited.
+func BufferLimit() int {
+	initialize()
+	return *bufferLimitPtr
+}
+
+// SetBufferLimit sets the maximum number of bytes retained per test capture buffer.
+// A value of 0 means unlimited. This takes effect for newly started tests; tests
+// already in progress retain the cap that was in effect at Subscribe time.
+func SetBufferLimit(n int) {
+	initialize()
+
+	*bufferLimitPtr = n
+}
+
+// Sentinel errors for parseByteSize.
+var (
+	errByteSizeEmpty    = errors.New("empty string")
+	errByteSizeFormat   = errors.New("must be a non-negative integer with optional suffix (B, K, KB, KiB, M, MB, MiB, G, GB, GiB)")
+	errByteSizeOverflow = errors.New("value overflows int")
+)
+
+// byteSizeRe matches an optional integer followed by an optional suffix.
+var byteSizeRe = regexp.MustCompile(`^(\d+)\s*([a-z]*)$`)
+
+// parseByteSize parses a human-friendly byte size string into an integer number of bytes.
+// Supported suffixes (case-insensitive): B, K/KB/KiB, M/MB/MiB, G/GB/GiB.
+// KB and KiB are treated identically as 1024 (likewise MB/MiB, GB/GiB).
+// A bare integer means bytes. Returns an error for unknown suffixes, negatives,
+// fractions, overflow, or empty input.
+func parseByteSize(s string) (int, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, errByteSizeEmpty
+	}
+
+	lower := strings.ToLower(s)
+
+	m := byteSizeRe.FindStringSubmatch(lower)
+	if m == nil {
+		return 0, fmt.Errorf("invalid byte size %q: %w", s, errByteSizeFormat)
+	}
+
+	n, err := strconv.ParseUint(m[1], 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid byte size %q: %w", s, err)
+	}
+
+	var multiplier uint64
+
+	switch m[2] {
+	case "", "b":
+		multiplier = 1
+	case "k", "kb", "kib":
+		multiplier = 1024
+	case "m", "mb", "mib":
+		multiplier = 1024 * 1024
+	case "g", "gb", "gib":
+		multiplier = 1024 * 1024 * 1024
+	default:
+		return 0, fmt.Errorf("invalid byte size %q: unknown suffix %q: %w", s, m[2], errByteSizeFormat)
+	}
+
+	result := n * multiplier
+	if result > math.MaxInt {
+		return 0, fmt.Errorf("invalid byte size %q: %w", s, errByteSizeOverflow)
+	}
+
+	return int(result), nil
+}
 
 func Disabled() bool {
 	initialize()
@@ -110,6 +196,21 @@ func initialize() {
 			}
 
 			artifactsPtr = &b
+		}
+
+		if bufferLimitPtr == nil {
+			limit := defaultBufferLimit
+
+			if raw := os.Getenv("FLUMETEST_BUFFER_LIMIT"); raw != "" {
+				v, err := parseByteSize(raw)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "flumetest: invalid FLUMETEST_BUFFER_LIMIT=%q: %v; using default %d\n", raw, err, defaultBufferLimit)
+				} else {
+					limit = v
+				}
+			}
+
+			bufferLimitPtr = &limit
 		}
 	})
 }
@@ -202,11 +303,21 @@ func Start(t testingTB) func() {
 		// On success without verbose, discard logs (don't create artifact dir).
 		saveArtifact := artifacts && (failed || verbose)
 
+		surfaced := false
+
 		if saveArtifact && sub.Len() > 0 {
 			writeArtifact(t, sub)
+
+			surfaced = true
 		} else if sub.Len() > 0 && (failed || verbose) {
 			// no artifact file: dump to t.Log on failure or when verbose
 			t.Log(sub.String())
+
+			surfaced = true
+		}
+
+		if surfaced && sub.Dropped() > 0 {
+			t.Log("flumetest: log buffer truncated;", sub.Dropped(), "bytes dropped (FLUMETEST_BUFFER_LIMIT=", BufferLimit(), ")")
 		}
 
 		if recovered != nil {
