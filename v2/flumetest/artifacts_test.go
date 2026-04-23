@@ -1,6 +1,7 @@
 package flumetest
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
@@ -23,6 +24,8 @@ type mockTOldGo struct {
 }
 
 func (m *mockTOldGo) Name() string { return m.name }
+
+func (m *mockTOldGo) Context() context.Context { return context.Background() }
 
 // setOutputDir registers test.outputdir on the current flagSet (if missing),
 // points it at a fresh temp directory, and returns that directory's path.

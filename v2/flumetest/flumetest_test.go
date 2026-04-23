@@ -2,6 +2,7 @@ package flumetest
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -57,6 +58,8 @@ func (m *mockT) Log(args ...any) {
 func (m *mockT) Name() string {
 	return "TestSomething"
 }
+
+func (m *mockT) Context() context.Context { return context.Background() }
 
 func TestStart(t *testing.T) {
 	var log = flume.New("TestStart")

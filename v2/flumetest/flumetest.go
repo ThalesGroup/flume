@@ -1,5 +1,7 @@
-// Package flumetest configures flume to integrate with golang tests.  It buffers logs during tests
-// and only dumps them to t.Log() if the test fails.
+// Package flumetest configures flume to integrate with golang tests.
+//
+// - Snapshot(): save and restore flume's configuration
+// - Start(): buffers logs during tests and dumps them to t.Log() if the test fails
 //
 // At the start of each test, add:
 //
@@ -24,10 +26,12 @@
 package flumetest
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"os"
 	"regexp"
@@ -327,6 +331,51 @@ func Start(t testingTB) func() {
 	return revert
 }
 
+// Capture all logs written during the test.  If the test succeeds, the
+// captured logs are discarded.  If the test fails, the captured logs are dumped
+// to the t.Log() method.
+//
+// In parallel tests, captures all flume output emitted while the test is
+// active. When tests overlap, each active test receives the full shared output
+// for the overlap window. Logs from other concurrently running tests may appear
+// in the captured output.
+//
+// Nested Capture() calls (e.g. in subtests) take over from ancestor captures:
+// during a subtest's window, the parent's capture is suspended and the child's
+// is active. The parent resumes when the subtest ends.
+//
+// If Capture() is called more than once for the same test (same t.Name()) while a
+// prior capture is still active, the second call triggers a rollover: the previous
+// buffer is flushed (or discarded if the test isn't failing yet).
+// A fresh buffer starts capturing subsequent logs. The old cleanup closure becomes
+// a no-op.
+//
+// If Verbose is true, captured logs are flushed at test end even on success.
+// (Previously: live-streamed to t.Log during execution. That behavior has changed.)
+// If Disable is true, Capture does nothing.
+//
+//	func TestSomething(t *testing.T) {
+//	  flumetest.Capture(t)
+//	  ...
+//	}
+//
+// Capture returns a context, derived from t.Context(), with the test name injected as a "testname"
+// attribute. The returned context can be passed to loggers to add the testname attribute:
+//
+//	ctx := flumetest.Capture(t)
+//	log.DebugCtx(ctx, "my message")
+//
+// This is useful for correlating logs when running parallel tests.
+//
+// Note: if the test panics, logs may be lost due to a golang bug:
+// https://github.com/golang/go/issues/49929
+// Until this bug is fixed, the recommendation is to first fix or avoid the panic,
+// then re-run the tests.  Generally, it is an anti-pattern for tests to panic anyway.
+func Capture(t testingTB) context.Context {
+	Start(t)
+	return addTestNameToLogs(t, nil)
+}
+
 func writeArtifact(t testingTB, src io.WriterTo) {
 	artifactFile := openArtifactFile(t)
 	if artifactFile == nil {
@@ -376,6 +425,10 @@ func flushBuffer(sub *subscriber, t testingTB, artifacts bool, verbose bool, fai
 //	// or...
 //	defer flumetest.Snapshot(flume.Default())()
 func Snapshot(h *flume.Handler) func() {
+	if h == nil {
+		h = flume.Default()
+	}
+
 	w := h.Out()
 	opts := h.HandlerOptions()
 
@@ -385,9 +438,27 @@ func Snapshot(h *flume.Handler) func() {
 	}
 }
 
+var installTestNameMiddlewareOnce sync.Once
+
+func addTestNameToLogs(t testingTB, h *flume.Handler) context.Context {
+	if h == nil {
+		h = flume.Default()
+	}
+
+	// lazy install the middleware
+	installTestNameMiddlewareOnce.Do(func() {
+		opts := h.HandlerOptions()
+		opts.Middleware = append(opts.Middleware, flume.ContextAttrsMiddleware())
+		h.SetHandlerOptions(opts)
+	})
+
+	return flume.ContextWithAttrs(t.Context(), slog.String("testname", t.Name()))
+}
+
 type testingTB interface {
 	Failed() bool
 	Log(args ...any)
 	Cleanup(func())
 	Name() string
+	Context() context.Context
 }
