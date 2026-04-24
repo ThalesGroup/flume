@@ -181,18 +181,7 @@ func TestStart(t *testing.T) {
 				t.Skip(test.skip)
 			}
 
-			// restore the original values after the test
-			oldDisabled := Disabled()
-			oldVerbose := Verbose()
-			oldArtifacts := Artifacts()
-
-			defer func() {
-				SetDisabled(oldDisabled)
-				SetVerbose(oldVerbose)
-				SetArtifacts(oldArtifacts)
-			}()
-
-			SetArtifacts(false)
+			resetGlobals(t)
 
 			m := mockT{
 				failed: test.failTest,
@@ -218,21 +207,11 @@ func TestStart(t *testing.T) {
 func TestStartArtifacts(t *testing.T) {
 	var log = flume.New("TestStartArtifacts")
 
-	// Save and restore original state
-	oldDisabled := Disabled()
-	oldVerbose := Verbose()
-	oldArtifacts := Artifacts()
-
-	defer func() {
-		SetDisabled(oldDisabled)
-		SetVerbose(oldVerbose)
-		SetArtifacts(oldArtifacts)
-	}()
-
 	t.Run("success_no_artifact_file", func(t *testing.T) {
+		resetGlobals(t)
+		SetArtifacts(true)
+		flagSet.Bool("test.artifacts", true, "")
 		dir := t.TempDir()
-		setArtifactsFlag(t)
-		setNativeArtifactsFlag(t)
 
 		m := &mockTWithArtifacts{mockT: mockT{}, artifactDir: dir}
 		revert := Start(m)
@@ -248,10 +227,11 @@ func TestStartArtifacts(t *testing.T) {
 	})
 
 	t.Run("verbose_writes_to_file_on_success", func(t *testing.T) {
-		dir := t.TempDir()
-		setArtifactsFlag(t)
-		setNativeArtifactsFlag(t)
+		resetGlobals(t)
+		SetArtifacts(true)
 		SetVerbose(true)
+		flagSet.Bool("test.artifacts", true, "")
+		dir := t.TempDir()
 
 		m := &mockTWithArtifacts{mockT: mockT{}, artifactDir: dir}
 		revert := Start(m)
@@ -267,9 +247,10 @@ func TestStartArtifacts(t *testing.T) {
 	})
 
 	t.Run("no_tlog_output_on_failure", func(t *testing.T) {
+		resetGlobals(t)
+		SetArtifacts(true)
+		flagSet.Bool("test.artifacts", true, "")
 		dir := t.TempDir()
-		setArtifactsFlag(t)
-		setNativeArtifactsFlag(t)
 
 		m := &mockTWithArtifacts{mockT: mockT{failed: true}, artifactDir: dir}
 		revert := Start(m)
@@ -284,9 +265,10 @@ func TestStartArtifacts(t *testing.T) {
 	})
 
 	t.Run("panic_is_repanicked", func(t *testing.T) {
+		resetGlobals(t)
+		SetArtifacts(true)
+		flagSet.Bool("test.artifacts", true, "")
 		dir := t.TempDir()
-		setArtifactsFlag(t)
-		setNativeArtifactsFlag(t)
 
 		m := &mockTWithArtifacts{mockT: mockT{}, artifactDir: dir}
 
@@ -302,12 +284,13 @@ func TestStartArtifacts(t *testing.T) {
 
 func TestArtifacts(t *testing.T) {
 	t.Run("not_set", func(t *testing.T) {
-		clearArtifactsFlag(t)
+		resetGlobals(t)
 		assert.False(t, Artifacts())
 	})
 
 	t.Run("set", func(t *testing.T) {
-		setArtifactsFlag(t)
+		resetGlobals(t)
+		SetArtifacts(true)
 		assert.True(t, Artifacts())
 	})
 }
@@ -324,14 +307,51 @@ func findArtifactLog(t *testing.T, dir string) string {
 	return matches[0]
 }
 
-// setArtifactsFlag temporarily enables artifacts for the duration of t.
-func setArtifactsFlag(t *testing.T) {
+// resetGlobals resets all package-level state to a clean, pre-initialize()
+// baseline and registers t.Cleanup to restore everything when the test ends.
+//
+// After resetGlobals returns, all four flag pointers (disabledPtr, verbosePtr,
+// artifactsPtr, bufferLimitPtr) are nil, initializeOnce is fresh, flagSet is a
+// new empty set, and all FLUMETEST_* / FLUME_TEST_* env vars are unset.
+//
+// The test may then call SetVerbose, SetArtifacts, etc. (which triggers
+// initialize()) or set env vars with t.Setenv before letting initialize() run.
+func resetGlobals(t *testing.T) {
 	t.Helper()
 
-	old := Artifacts()
+	oldD, oldV, oldA, oldBL := disabledPtr, verbosePtr, artifactsPtr, bufferLimitPtr
+	oldOnce := initializeOnce
+	oldFlagSet := flagSet
 
-	SetArtifacts(true)
-	t.Cleanup(func() { SetArtifacts(old) })
+	t.Cleanup(func() {
+		disabledPtr = oldD
+		verbosePtr = oldV
+		artifactsPtr = oldA
+		bufferLimitPtr = oldBL
+		initializeOnce = oldOnce
+		flagSet = oldFlagSet
+	})
+
+	disabledPtr = nil
+	verbosePtr = nil
+	artifactsPtr = nil
+	bufferLimitPtr = nil
+	initializeOnce = &sync.Once{}
+	flagSet = flag.NewFlagSet("test", flag.ContinueOnError)
+
+	// Clear all env vars that initialize() reads.  t.Setenv records the
+	// original value (or absence) and restores it on cleanup; the subsequent
+	// os.Unsetenv ensures the var is truly absent for the test.
+	for _, key := range []string{
+		"FLUMETEST_DISABLE",
+		"FLUME_TEST_DISABLE",
+		"FLUMETEST_VERBOSE",
+		"FLUMETEST_ARTIFACTS",
+		"FLUMETEST_BUFFER_LIMIT",
+	} {
+		t.Setenv(key, "")
+		os.Unsetenv(key) //nolint:errcheck
+	}
 }
 
 type mockTWithArtifacts struct {
@@ -344,85 +364,9 @@ func (m *mockTWithArtifacts) ArtifactDir() string {
 	return m.artifactDir
 }
 
-// setNativeArtifactsFlag registers (if needed) and enables the go1.26
-// test.artifacts flag for the duration of t.
-func setNativeArtifactsFlag(t *testing.T) {
-	t.Helper()
-
-	f := flagSet.Lookup("test.artifacts")
-	if f == nil {
-		// Pre-go1.26: register the flag so the test can exercise the 1.26 path.
-		flagSet.Bool("test.artifacts", false, "")
-		f = flagSet.Lookup("test.artifacts")
-	}
-
-	old := f.Value.String()
-
-	require.NoError(t, flagSet.Set("test.artifacts", "true"))
-	t.Cleanup(func() { _ = flagSet.Set("test.artifacts", old) })
-}
-
-// clearNativeArtifactsFlag ensures the go1.26 test.artifacts flag is false
-// for the duration of t.
-func clearNativeArtifactsFlag(t *testing.T) {
-	t.Helper()
-
-	f := flagSet.Lookup("test.artifacts")
-	if f == nil {
-		return
-	}
-
-	old := f.Value.String()
-
-	require.NoError(t, flagSet.Set("test.artifacts", "false"))
-	t.Cleanup(func() { _ = flagSet.Set("test.artifacts", old) })
-}
-
 func TestInitialize(t *testing.T) {
-	// unsetenv removes an environment variable for the duration of the test.
-	unsetenv := func(t *testing.T, key string) {
-		t.Helper()
-
-		if old, ok := os.LookupEnv(key); ok {
-			require.NoError(t, os.Unsetenv(key))
-			t.Cleanup(func() { os.Setenv(key, old) }) //nolint:usetesting
-		}
-	}
-
-	// setup resets all global state, injects a fresh flag set, and clears all
-	// relevant env vars, restoring everything when the subtest ends.
-	setup := func(t *testing.T) {
-		t.Helper()
-
-		oldD, oldV, oldA, oldBL := disabledPtr, verbosePtr, artifactsPtr, bufferLimitPtr
-		oldOnce := initializeOnce
-		oldFlagSet := flagSet
-
-		t.Cleanup(func() {
-			disabledPtr = oldD
-			verbosePtr = oldV
-			artifactsPtr = oldA
-			bufferLimitPtr = oldBL
-			initializeOnce = oldOnce
-			flagSet = oldFlagSet
-		})
-
-		disabledPtr = nil
-		verbosePtr = nil
-		artifactsPtr = nil
-		bufferLimitPtr = nil
-		initializeOnce = &sync.Once{}
-		flagSet = flag.NewFlagSet("test", flag.ContinueOnError)
-
-		unsetenv(t, "FLUMETEST_DISABLE")
-		unsetenv(t, "FLUME_TEST_DISABLE")
-		unsetenv(t, "FLUMETEST_VERBOSE")
-		unsetenv(t, "FLUMETEST_ARTIFACTS")
-		unsetenv(t, "FLUMETEST_BUFFER_LIMIT")
-	}
-
 	t.Run("defaults", func(t *testing.T) {
-		setup(t)
+		resetGlobals(t)
 
 		initialize()
 
@@ -435,7 +379,7 @@ func TestInitialize(t *testing.T) {
 	// --- disabled ---
 
 	t.Run("disabled/env_var", func(t *testing.T) {
-		setup(t)
+		resetGlobals(t)
 		t.Setenv("FLUMETEST_DISABLE", "true")
 
 		initialize()
@@ -444,7 +388,7 @@ func TestInitialize(t *testing.T) {
 	})
 
 	t.Run("disabled/v1_compat_fallback", func(t *testing.T) {
-		setup(t)
+		resetGlobals(t)
 		t.Setenv("FLUME_TEST_DISABLE", "true")
 
 		initialize()
@@ -453,7 +397,7 @@ func TestInitialize(t *testing.T) {
 	})
 
 	t.Run("disabled/v2_env_takes_precedence_over_v1", func(t *testing.T) {
-		setup(t)
+		resetGlobals(t)
 		t.Setenv("FLUMETEST_DISABLE", "false")
 		t.Setenv("FLUME_TEST_DISABLE", "true")
 
@@ -463,7 +407,7 @@ func TestInitialize(t *testing.T) {
 	})
 
 	t.Run("disabled/pointer_already_set_skips_env", func(t *testing.T) {
-		setup(t)
+		resetGlobals(t)
 		t.Setenv("FLUMETEST_DISABLE", "true")
 
 		b := false
@@ -477,7 +421,7 @@ func TestInitialize(t *testing.T) {
 	// --- verbose ---
 
 	t.Run("verbose/env_var", func(t *testing.T) {
-		setup(t)
+		resetGlobals(t)
 		t.Setenv("FLUMETEST_VERBOSE", "true")
 
 		initialize()
@@ -486,7 +430,7 @@ func TestInitialize(t *testing.T) {
 	})
 
 	t.Run("verbose/pointer_already_set_skips_env", func(t *testing.T) {
-		setup(t)
+		resetGlobals(t)
 		t.Setenv("FLUMETEST_VERBOSE", "true")
 
 		b := false
@@ -500,7 +444,7 @@ func TestInitialize(t *testing.T) {
 	// --- artifacts ---
 
 	t.Run("artifacts/env_var_true", func(t *testing.T) {
-		setup(t)
+		resetGlobals(t)
 		t.Setenv("FLUMETEST_ARTIFACTS", "true")
 
 		initialize()
@@ -509,7 +453,7 @@ func TestInitialize(t *testing.T) {
 	})
 
 	t.Run("artifacts/env_var_false", func(t *testing.T) {
-		setup(t)
+		resetGlobals(t)
 		t.Setenv("FLUMETEST_ARTIFACTS", "false")
 
 		initialize()
@@ -518,7 +462,7 @@ func TestInitialize(t *testing.T) {
 	})
 
 	t.Run("artifacts/native_flag_true", func(t *testing.T) {
-		setup(t)
+		resetGlobals(t)
 		flagSet.Bool("test.artifacts", false, "")
 		require.NoError(t, flagSet.Set("test.artifacts", "true"))
 
@@ -528,7 +472,7 @@ func TestInitialize(t *testing.T) {
 	})
 
 	t.Run("artifacts/native_flag_false", func(t *testing.T) {
-		setup(t)
+		resetGlobals(t)
 		flagSet.Bool("test.artifacts", false, "")
 
 		initialize()
@@ -537,7 +481,7 @@ func TestInitialize(t *testing.T) {
 	})
 
 	t.Run("artifacts/env_true_overrides_native_false", func(t *testing.T) {
-		setup(t)
+		resetGlobals(t)
 		t.Setenv("FLUMETEST_ARTIFACTS", "true")
 		flagSet.Bool("test.artifacts", false, "")
 
@@ -547,7 +491,7 @@ func TestInitialize(t *testing.T) {
 	})
 
 	t.Run("artifacts/env_false_overrides_native_true", func(t *testing.T) {
-		setup(t)
+		resetGlobals(t)
 		t.Setenv("FLUMETEST_ARTIFACTS", "false")
 		flagSet.Bool("test.artifacts", false, "")
 		require.NoError(t, flagSet.Set("test.artifacts", "true"))
@@ -558,7 +502,7 @@ func TestInitialize(t *testing.T) {
 	})
 
 	t.Run("artifacts/no_native_flag_no_env", func(t *testing.T) {
-		setup(t)
+		resetGlobals(t)
 
 		initialize()
 
@@ -566,7 +510,7 @@ func TestInitialize(t *testing.T) {
 	})
 
 	t.Run("artifacts/pointer_already_set_skips_env_and_flag", func(t *testing.T) {
-		setup(t)
+		resetGlobals(t)
 		t.Setenv("FLUMETEST_ARTIFACTS", "true")
 		flagSet.Bool("test.artifacts", false, "")
 		require.NoError(t, flagSet.Set("test.artifacts", "true"))
@@ -580,25 +524,12 @@ func TestInitialize(t *testing.T) {
 	})
 }
 
-// disableArtifactsForTest disables artifact capture for the duration of t,
-// restoring the previous setting on cleanup. This matches the behavior tested
-// here, which exercises Start's in-memory capture/replay path rather than
-// the file-artifact path.
-func disableArtifactsForTest(t *testing.T) {
-	t.Helper()
-
-	old := Artifacts()
-
-	SetArtifacts(false)
-	t.Cleanup(func() { SetArtifacts(old) })
-}
-
 // TestParallelOverlapCaptures verifies the end-to-end fan-out wiring through
 // Start(): overlapping subscribers each receive all logs emitted during their
 // active windows. This is the primary integration test for the mux fan-out;
 // it also exercises sibling capture semantics.
 func TestParallelOverlapCaptures(t *testing.T) {
-	disableArtifactsForTest(t)
+	resetGlobals(t)
 
 	log := flume.New("parallel-test")
 
@@ -635,7 +566,7 @@ func TestParallelOverlapCaptures(t *testing.T) {
 // TestNestedSuppression verifies that when a child Start is active, the
 // ancestor's capture is suspended; it resumes when the child finishes.
 func TestNestedSuppression(t *testing.T) {
-	disableArtifactsForTest(t)
+	resetGlobals(t)
 
 	log := flume.New("nested-test")
 
@@ -669,7 +600,7 @@ func TestNestedSuppression(t *testing.T) {
 // TestOrphanAncestor verifies that subscribing with a subtest-style name
 // whose ancestor has no active subscriber works without panic.
 func TestOrphanAncestor(t *testing.T) {
-	disableArtifactsForTest(t)
+	resetGlobals(t)
 
 	log := flume.New("orphan-test")
 
@@ -690,7 +621,7 @@ func TestOrphanAncestor(t *testing.T) {
 // a warning via t.Log, and returns a no-op revert. The outer Start's capture
 // remains in effect and is flushed when the outer revert runs.
 func TestDoubleStartIsNoOp(t *testing.T) {
-	disableArtifactsForTest(t)
+	resetGlobals(t)
 
 	log := flume.New("double-start-test")
 
@@ -728,7 +659,7 @@ func TestDoubleStartIsNoOp(t *testing.T) {
 // buffer is released (buf set to nil) after revert runs, making the bytes
 // eligible for garbage collection even though the closure is still retained.
 func TestStart_releases_buffer_after_revert(t *testing.T) {
-	disableArtifactsForTest(t)
+	resetGlobals(t)
 
 	log := flume.New("release-test")
 
@@ -841,35 +772,14 @@ func TestParseByteSize_invalid(t *testing.T) {
 
 // --- Task 3.11: BufferLimit tests ---
 
-// setupBufferLimit is a helper that resets all global state for BufferLimit tests.
-func setupBufferLimit(t *testing.T) {
-	t.Helper()
-
-	oldBL := bufferLimitPtr
-	oldOnce := initializeOnce
-
-	t.Cleanup(func() {
-		bufferLimitPtr = oldBL
-		initializeOnce = oldOnce
-	})
-
-	bufferLimitPtr = nil
-	initializeOnce = &sync.Once{}
-
-	if old, ok := os.LookupEnv("FLUMETEST_BUFFER_LIMIT"); ok {
-		require.NoError(t, os.Unsetenv("FLUMETEST_BUFFER_LIMIT"))
-		t.Cleanup(func() { os.Setenv("FLUMETEST_BUFFER_LIMIT", old) }) //nolint:usetesting
-	}
-}
-
 func TestBufferLimit_defaultIs1MiB(t *testing.T) {
-	setupBufferLimit(t)
+	resetGlobals(t)
 
 	assert.Equal(t, 1<<20, BufferLimit())
 }
 
 func TestBufferLimit_zeroMeansUnlimited(t *testing.T) {
-	setupBufferLimit(t)
+	resetGlobals(t)
 
 	SetBufferLimit(0)
 
@@ -885,7 +795,7 @@ func TestBufferLimit_zeroMeansUnlimited(t *testing.T) {
 }
 
 func TestSetBufferLimit_overridesEnv(t *testing.T) {
-	setupBufferLimit(t)
+	resetGlobals(t)
 
 	t.Setenv("FLUMETEST_BUFFER_LIMIT", "2MB")
 
@@ -911,7 +821,7 @@ func TestBufferLimit_envVar(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.envVal, func(t *testing.T) {
-			setupBufferLimit(t)
+			resetGlobals(t)
 			t.Setenv("FLUMETEST_BUFFER_LIMIT", tc.envVal)
 
 			assert.Equal(t, tc.want, BufferLimit())
@@ -920,7 +830,7 @@ func TestBufferLimit_envVar(t *testing.T) {
 }
 
 func TestBufferLimit_invalidEnvVarWarnsAndUsesDefault(t *testing.T) {
-	setupBufferLimit(t)
+	resetGlobals(t)
 
 	t.Setenv("FLUMETEST_BUFFER_LIMIT", "not-a-number")
 
@@ -930,11 +840,11 @@ func TestBufferLimit_invalidEnvVarWarnsAndUsesDefault(t *testing.T) {
 	require.NoError(t, err)
 
 	os.Stderr = w
+	defer func() { os.Stderr = oldStderr }()
 
 	limit := BufferLimit()
 
 	_ = w.Close()
-	os.Stderr = oldStderr
 
 	var stderrBuf strings.Builder
 
@@ -948,12 +858,10 @@ func TestBufferLimit_invalidEnvVarWarnsAndUsesDefault(t *testing.T) {
 // --- Task 3.14: Truncation notice tests ---
 
 func TestRevert_logsTruncationNoticeViaTLog(t *testing.T) {
-	disableArtifactsForTest(t)
+	resetGlobals(t)
 
 	// Use a small buffer limit so we can trigger truncation easily.
 	SetBufferLimit(10)
-
-	t.Cleanup(func() { SetBufferLimit(defaultBufferLimit) })
 
 	log := flume.New("truncation-test")
 
@@ -985,12 +893,10 @@ func TestRevert_logsTruncationNoticeViaTLog(t *testing.T) {
 }
 
 func TestRevert_noNoticeWhenNoTruncation(t *testing.T) {
-	disableArtifactsForTest(t)
+	resetGlobals(t)
 
 	// Use a generous limit so no truncation occurs.
 	SetBufferLimit(1 << 20)
-
-	t.Cleanup(func() { SetBufferLimit(defaultBufferLimit) })
 
 	log := flume.New("no-truncation-test")
 
@@ -998,8 +904,6 @@ func TestRevert_noNoticeWhenNoTruncation(t *testing.T) {
 		name := fmt.Sprintf("failed=%v", failTest)
 
 		t.Run(name, func(t *testing.T) {
-			disableArtifactsForTest(t)
-
 			mock := &mockTOldGo{mockT: mockT{failed: failTest}, name: "TestRevert_noNoticeWhenNoTruncation/" + name}
 
 			revert := Start(mock)
@@ -1015,20 +919,15 @@ func TestRevert_noNoticeWhenNoTruncation(t *testing.T) {
 }
 
 func TestRevert_noNoticeWhenSilentlyDiscarded(t *testing.T) {
-	disableArtifactsForTest(t)
+	resetGlobals(t)
 
 	// Small buffer limit to ensure truncation would occur.
 	SetBufferLimit(10)
-
-	t.Cleanup(func() { SetBufferLimit(defaultBufferLimit) })
 
 	log := flume.New("silent-discard-test")
 
 	// Passing test, verbose=false, artifacts=false => buffer silently discarded.
 	mock := &mockTOldGo{mockT: mockT{failed: false}, name: "TestRevert_noNoticeWhenSilentlyDiscarded/inner"}
-
-	SetVerbose(false)
-	t.Cleanup(func() { SetVerbose(false) })
 
 	revert := Start(mock)
 
