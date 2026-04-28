@@ -115,6 +115,7 @@ func TestGetArtifactDir(t *testing.T) {
 	t.Run("with_name_creates_dir_inside_outputdir", func(t *testing.T) {
 		resetGlobals(t)
 		SetArtifacts(true)
+
 		outDir := setOutputDir(t)
 
 		m := &mockTOldGo{name: "TestGetArtifactDir/with_name"}
@@ -134,6 +135,7 @@ func TestGetArtifactDir(t *testing.T) {
 	t.Run("nice_name_uses_name_as_prefix", func(t *testing.T) {
 		resetGlobals(t)
 		SetArtifacts(true)
+
 		outDir := setOutputDir(t)
 
 		m := &mockTOldGo{name: "NiceTestName"}
@@ -179,6 +181,7 @@ func TestGetArtifactDir(t *testing.T) {
 		resetGlobals(t)
 		SetArtifacts(true)
 		flagSet.Bool("test.artifacts", false, "")
+
 		outDir := setOutputDir(t)
 
 		m := &mockTWithArtifacts{
@@ -220,6 +223,7 @@ func TestStartOldGo(t *testing.T) {
 	t.Run("failure_logs_artifacts_path_to_tlog", func(t *testing.T) {
 		resetGlobals(t)
 		SetArtifacts(true)
+
 		outDir := setOutputDir(t)
 
 		m := &mockTOldGo{mockT: mockT{failed: true}, name: "TestStartOldGo/failure"}
@@ -245,6 +249,7 @@ func TestStartOldGo(t *testing.T) {
 	t.Run("success_no_artifacts_created", func(t *testing.T) {
 		resetGlobals(t)
 		SetArtifacts(true)
+
 		outDir := setOutputDir(t)
 
 		m := &mockTOldGo{name: "TestStartOldGo/success"}
@@ -267,6 +272,7 @@ func TestStartOldGo(t *testing.T) {
 		resetGlobals(t)
 		SetVerbose(true)
 		SetArtifacts(true)
+
 		outDir := setOutputDir(t)
 
 		m := &mockTOldGo{name: "TestStartOldGo/verbose_success"}

@@ -211,6 +211,7 @@ func TestStartArtifacts(t *testing.T) {
 		resetGlobals(t)
 		SetArtifacts(true)
 		flagSet.Bool("test.artifacts", true, "")
+
 		dir := t.TempDir()
 
 		m := &mockTWithArtifacts{mockT: mockT{}, artifactDir: dir}
@@ -231,6 +232,7 @@ func TestStartArtifacts(t *testing.T) {
 		SetArtifacts(true)
 		SetVerbose(true)
 		flagSet.Bool("test.artifacts", true, "")
+
 		dir := t.TempDir()
 
 		m := &mockTWithArtifacts{mockT: mockT{}, artifactDir: dir}
@@ -250,6 +252,7 @@ func TestStartArtifacts(t *testing.T) {
 		resetGlobals(t)
 		SetArtifacts(true)
 		flagSet.Bool("test.artifacts", true, "")
+
 		dir := t.TempDir()
 
 		m := &mockTWithArtifacts{mockT: mockT{failed: true}, artifactDir: dir}
@@ -268,6 +271,7 @@ func TestStartArtifacts(t *testing.T) {
 		resetGlobals(t)
 		SetArtifacts(true)
 		flagSet.Bool("test.artifacts", true, "")
+
 		dir := t.TempDir()
 
 		m := &mockTWithArtifacts{mockT: mockT{}, artifactDir: dir}
@@ -350,7 +354,7 @@ func resetGlobals(t *testing.T) {
 		"FLUMETEST_BUFFER_LIMIT",
 	} {
 		t.Setenv(key, "")
-		os.Unsetenv(key) //nolint:errcheck
+		os.Unsetenv(key)
 	}
 }
 
@@ -840,6 +844,7 @@ func TestBufferLimit_invalidEnvVarWarnsAndUsesDefault(t *testing.T) {
 	require.NoError(t, err)
 
 	os.Stderr = w
+
 	defer func() { os.Stderr = oldStderr }()
 
 	limit := BufferLimit()
