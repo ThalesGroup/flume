@@ -21,6 +21,7 @@ linters:
     - varnamelen
     - wsl
     - noinlineerr
+    - nonamedreturns
   settings:
     exhaustive:
       default-signifies-exhaustive: true

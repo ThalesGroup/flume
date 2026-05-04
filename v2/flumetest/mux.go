@@ -106,44 +106,63 @@ func nameDepth(name string) int {
 	return strings.Count(name, "/")
 }
 
-// Subscribe registers a new capture buffer for the given test name and returns
-// the subscription id, the subscriber, and whether an active subscription
-// already existed for testName.
+// Subscribe registers a new capture buffer for the given test name, returning the
+// old subscriber if one existed for the same test name (same-test rollover).
+// The returned bool indicates whether a replacement occurred.
 //
-// If a subscription is already active for testName, Subscribe is a no-op and
-// returns (0, nil, true). Callers should treat the duplicate registration as a
-// no-op (Start surfaces this with a t.Log).
-func (m *multiplexWriter) Subscribe(testName string) (uint64, *subscriber, bool) {
-	sub := newSubscriber(BufferLimit())
+// Returns: newID, newSubscriber, oldSubscriber, replaced
+//   - If a replacement occurred: newID and newSub are the new subscription, oldSub is
+//     the old subscriber (flushed by caller), replaced is true.
+//   - If no same-name subscriber exists: handles child/subtest ancestor suspension
+//     or new subscriber creation. oldSub is nil, replaced is false.
+func (m *multiplexWriter) Subscribe(testName string) (newID uint64, newSub, oldSub *subscriber, replaced bool) {
+	newSub = newSubscriber(BufferLimit())
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	enableNewSub := true
+
+	// Check for existing same-name active subscriber (same-test rollover case).
 	for i := range m.state.records {
-		if m.state.records[i].testName == testName && m.state.records[i].enabled {
-			return 0, nil, true
+		if m.state.records[i].testName == testName {
+			// Found an existing same-name subscriber. Close it to stop new writes
+			// and return it for flushing.
+			oldSub = m.state.records[i].sub
+			oldSub.Close()
+
+			// new sub should have same enabled state os the sub it replaces
+			enableNewSub = m.state.records[i].enabled
+
+			// Remove the old record.
+			m.state.records = slices.Delete(m.state.records, i, i+1)
+
+			break
 		}
 	}
 
-	for i := range m.state.records {
-		if m.state.records[i].enabled && isAncestor(m.state.records[i].testName, testName) {
-			m.state.records[i].enabled = false
+	// If no same-name subscriber, apply ancestor-suspension logic.
+	if oldSub == nil {
+		for i := range m.state.records {
+			if m.state.records[i].enabled && isAncestor(m.state.records[i].testName, testName) {
+				m.state.records[i].enabled = false
+			}
 		}
 	}
 
 	m.nextID++
-	id := m.nextID
+	newID = m.nextID
 	m.state.records = append(m.state.records, subscriberRecord{
-		id:       id,
+		id:       newID,
 		testName: testName,
 		depth:    nameDepth(testName),
-		sub:      sub,
-		enabled:  true,
+		sub:      newSub,
+		enabled:  enableNewSub,
 	})
 
 	m.rebuildSnapshot()
 
-	return id, sub, false
+	return newID, newSub, oldSub, oldSub != nil
 }
 
 func (m *multiplexWriter) Unsubscribe(id uint64) {

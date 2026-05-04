@@ -50,8 +50,8 @@ func (o *HandlerOptions) handler(name string, w io.Writer) slog.Handler {
 		sink = noop
 	}
 
-	for i := len(o.Middleware) - 1; i >= 0; i-- {
-		sink = o.Middleware[i].Apply(sink)
+	for _, v := range slices.Backward(o.Middleware) {
+		sink = v.Apply(sink)
 	}
 
 	return sink
@@ -262,9 +262,9 @@ func (s *innerHandler) delegate() slog.Handler {
 
 func loggerName(attrs []slog.Attr) string {
 	// find the last logger name attribute
-	for i := len(attrs) - 1; i >= 0; i-- {
-		if attrs[i].Key == LoggerKey && attrs[i].Value.Kind() == slog.KindString {
-			return attrs[i].Value.String()
+	for _, v := range slices.Backward(attrs) {
+		if v.Key == LoggerKey && v.Value.Kind() == slog.KindString {
+			return v.Value.String()
 		}
 	}
 

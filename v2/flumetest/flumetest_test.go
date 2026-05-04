@@ -620,43 +620,134 @@ func TestOrphanAncestor(t *testing.T) {
 	assert.Contains(t, mock.logs.String(), "orphan")
 }
 
-// TestDoubleStartIsNoOp verifies that calling Start twice for the same test
-// name (while the first is still active) is a no-op: it does not panic, emits
-// a warning via t.Log, and returns a no-op revert. The outer Start's capture
-// remains in effect and is flushed when the outer revert runs.
-func TestDoubleStartIsNoOp(t *testing.T) {
+// TestDoubleStartRollover verifies that calling Start twice for the same test
+// name (while the first is still active) triggers a rollover: the first buffer is
+// flushed immediately (to t.Log if the test is already failing, or discarded otherwise),
+// and a fresh buffer starts capturing subsequent logs. The cleanup flushes the
+// final buffer at test end.
+func TestDoubleStartRollover(t *testing.T) {
 	resetGlobals(t)
 
 	log := flume.New("double-start-test")
 
-	mock := &mockTOldGo{mockT: mockT{failed: true}, name: "TestDoubleStartIsNoOp/target"}
+	mock := &mockTOldGo{mockT: mockT{failed: true}, name: "TestDoubleStartRollover/target"}
+
+	Start(mock) // first Start, registers cleanup1 for sub1
+
+	log.Info("before-double-start")
+
+	revert2 := Start(mock) // second Start triggers rollover, registers cleanup2 for sub2
+
+	log.Info("after-double-start")
+	log.Info("after-inner-revert")
+
+	// After rollover, the active subscriber is sub2 (from the second Start).
+	// Calling revert2() flushes sub2 and runs cleanup.
+	revert2()
+
+	logs := mock.logs.String()
+
+	// After rollover, the old buffer was flushed immediately (on the second Start())
+	// to t.Log because the test was marked as failed.
+	// Then the new buffer captured "after-double-start" and "after-inner-revert",
+	// which are flushed by revert2().
+	assert.Contains(t, logs, "before-double-start", "first buffer flushed on rollover should appear")
+	assert.Contains(t, logs, "after-double-start", "new buffer should capture logs after rollover")
+	assert.Contains(t, logs, "after-inner-revert", "new buffer should capture logs before cleanup")
+}
+
+// TestDoubleStartRolloverSuccess verifies rollover behavior when the test is passing:
+// the first buffer is discarded (not flushed to t.Log) on rollover, and only the
+// second buffer's logs are captured.
+func TestDoubleStartRolloverSuccess(t *testing.T) {
+	resetGlobals(t)
+
+	log := flume.New("double-start-success-test")
+
+	mock := &mockTOldGo{mockT: mockT{failed: false}, name: "TestDoubleStartRolloverSuccess/target"}
 
 	revert1 := Start(mock)
 
 	log.Info("before-double-start")
 
-	var revert2 func()
-
-	require.NotPanics(t, func() {
-		revert2 = Start(mock)
-	})
-	require.NotNil(t, revert2)
+	revert2 := Start(mock)
 
 	log.Info("after-double-start")
 
-	// Inner revert is a no-op; calling it must not unsubscribe the outer
-	// capture or otherwise disrupt log collection.
-	revert2()
-
-	log.Info("after-inner-revert")
-
+	revert2() // no-op
 	revert1()
 
 	logs := mock.logs.String()
-	assert.Contains(t, logs, "flumetest: Start already active for ", "expected warning via t.Log")
-	assert.Contains(t, logs, "before-double-start", "outer capture should include logs before duplicate Start")
-	assert.Contains(t, logs, "after-double-start", "outer capture should include logs while inner Start was active")
-	assert.Contains(t, logs, "after-inner-revert", "outer capture should remain active after inner revert")
+
+	// Since test was passing, first buffer was discarded on rollover.
+	// The second buffer captured "after-double-start" and it's also discarded
+	// because the test passes.
+	assert.NotContains(t, logs, "before-double-start", "first buffer should be discarded on rollover when passing")
+	assert.NotContains(t, logs, "after-double-start", "final buffer should be discarded when test passes")
+}
+
+// TestDoubleStartRolloverVerbose verifies that rollover works correctly when
+// verbose mode is enabled: both buffers are flushed (to t.Log because verbose=true
+// and artifacts are not enabled).
+func TestDoubleStartRolloverVerbose(t *testing.T) {
+	resetGlobals(t)
+	SetVerbose(true)
+
+	log := flume.New("double-start-verbose-test")
+
+	mock := &mockTOldGo{mockT: mockT{failed: false}, name: "TestDoubleStartRolloverVerbose/target"}
+
+	revert1 := Start(mock)
+
+	log.Info("phase-1")
+
+	revert2 := Start(mock)
+
+	log.Info("phase-2")
+
+	revert2()
+	revert1()
+
+	logs := mock.logs.String()
+
+	// With verbose, both buffers should be flushed to t.Log.
+	assert.Contains(t, logs, "phase-1", "first buffer flushed on rollover (verbose)")
+	assert.Contains(t, logs, "phase-2", "second buffer flushed on cleanup (verbose)")
+}
+
+// TestDoubleStartRolloverFailureState verifies that when a test is already failing
+// before the second Start() call, the buffered logs from the first Start() are
+// surfaced immediately (to t.Log) when the second Start() triggers rollover.
+func TestDoubleStartRolloverFailureState(t *testing.T) {
+	resetGlobals(t)
+
+	log := flume.New("double-start-fail-test")
+
+	// Create a mock that's already marked as failed
+	mock := &mockTOldGo{mockT: mockT{failed: true}, name: "TestDoubleStartRolloverFailureState/target"}
+
+	Start(mock)
+
+	log.Info("before-rollover")
+
+	// The mock is already marked as failed, so when second Start() happens,
+	// the first buffer should be flushed to t.Log immediately.
+	revert2 := Start(mock)
+
+	// The first buffer should have been flushed to t.Log immediately because
+	// the test was already failing at the time of the second Start().
+	logsAfterRollover := mock.logs.String()
+	assert.Contains(t, logsAfterRollover, "before-rollover",
+		"first buffer should be flushed immediately when test is already failing")
+
+	log.Info("after-rollover")
+
+	revert2()
+
+	logs := mock.logs.String()
+
+	// The final flush should contain the second buffer too.
+	assert.Contains(t, logs, "after-rollover", "second buffer should be flushed")
 }
 
 // TestStart_releases_buffer_after_revert verifies that the per-test capture
@@ -673,8 +764,11 @@ func TestStart_releases_buffer_after_revert(t *testing.T) {
 	// can inspect the subscriber's internal state after revert.
 	ensureMuxInstalled()
 
-	_, sub, existing := globalMux.Subscribe(mock.Name())
-	require.False(t, existing)
+	id, sub, oldSub, replaced := globalMux.Subscribe(mock.Name())
+	_ = id // unused
+
+	require.False(t, replaced)
+	require.Nil(t, oldSub)
 
 	// Write some data to establish a non-empty buffer.
 	_, _ = sub.Write([]byte("some captured log data"))

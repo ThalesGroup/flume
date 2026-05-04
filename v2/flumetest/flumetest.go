@@ -242,9 +242,10 @@ func RegisterFlags() {
 // is active. The parent resumes when the subtest ends.
 //
 // If Start is called more than once for the same test (same t.Name()) while a
-// prior capture is still active, subsequent calls are a no-op: a warning is
-// emitted via t.Log and a no-op revert function is returned. The original
-// capture remains in effect and is flushed when the outer Start's revert runs.
+// prior capture is still active, the second call triggers a rollover: the previous
+// buffer is flushed (or discarded if the test isn't failing yet).
+// A fresh buffer starts capturing subsequent logs. The old cleanup closure becomes
+// a no-op.
 //
 // If Verbose is true, captured logs are flushed at test end even on success.
 // (Previously: live-streamed to t.Log during execution. That behavior has changed.)
@@ -271,11 +272,12 @@ func Start(t testingTB) func() {
 	verbose := Verbose()
 	artifacts := Artifacts()
 
-	id, sub, existing := globalMux.Subscribe(t.Name())
-	if existing {
-		t.Log("flumetest: Start already active for " + t.Name() + "; returning no-op (logs captured by outer Start)")
+	id, sub, oldSub, replaced := globalMux.Subscribe(t.Name())
 
-		return func() {}
+	// If replaced is true, an old subscriber was returned. We must flush its buffer
+	// now (not when its cleanup runs) because the old subscriber is being retired.
+	if replaced && oldSub != nil {
+		flushBuffer(oldSub, t, artifacts, verbose, t.Failed())
 	}
 
 	// since we're calling this function via t.Cleanup *and* returning
@@ -289,36 +291,16 @@ func Start(t testingTB) func() {
 			return
 		}
 
-		defer sub.Free()
-
 		// Unsubscribe first so no new writes land in sub after this point.
+		// Idempotent: no-op if already removed by same-test rollover.
 		globalMux.Unsubscribe(id)
 
 		// make sure that if the test panics, we re-panic after cleanup
 		recovered := recover()
 
-		failed := recovered != nil || t.Failed()
-
-		// Save to artifact file on failure/panic, or always when verbose.
-		// On success without verbose, discard logs (don't create artifact dir).
-		saveArtifact := artifacts && (failed || verbose)
-
-		surfaced := false
-
-		if saveArtifact && sub.Len() > 0 {
-			writeArtifact(t, sub)
-
-			surfaced = true
-		} else if sub.Len() > 0 && (failed || verbose) {
-			// no artifact file: dump to t.Log on failure or when verbose
-			t.Log(sub.String())
-
-			surfaced = true
-		}
-
-		if surfaced && sub.Dropped() > 0 {
-			t.Log("flumetest: log buffer truncated;", sub.Dropped(), "bytes dropped (FLUMETEST_BUFFER_LIMIT=", BufferLimit(), ")")
-		}
+		// Flush this subscriber's buffer.
+		// Use recovered != nil || t.Failed() to match original panic-handling behavior.
+		flushBuffer(sub, t, artifacts, verbose, recovered != nil || t.Failed())
 
 		if recovered != nil {
 			panic(recovered)
@@ -353,6 +335,35 @@ func writeArtifact(t testingTB, src io.WriterTo) {
 	defer artifactFile.Close()
 
 	_, _ = src.WriteTo(artifactFile)
+}
+
+// flushBuffer flushes the subscriber's captured logs to t.Log or artifact file,
+// or discards them if the test passed and neither verbose nor artifacts require flushing.
+// This is used both by the normal cleanup path and by the same-test rollover path
+// when a second Start() replaces an existing subscriber.
+// The failed parameter should be true if the test has failed OR if a panic occurred.
+func flushBuffer(sub *subscriber, t testingTB, artifacts bool, verbose bool, failed bool) {
+	defer sub.Free()
+	// Save to artifact file on failure, or always when verbose.
+	// On success without verbose, discard logs (don't create artifact dir).
+	saveArtifact := artifacts && (failed || verbose)
+
+	flushed := false
+
+	if saveArtifact && sub.Len() > 0 {
+		writeArtifact(t, sub)
+
+		flushed = true
+	} else if sub.Len() > 0 && (failed || verbose) {
+		// no artifact file: dump to t.Log on failure or when verbose
+		t.Log(sub.String())
+
+		flushed = true
+	}
+
+	if flushed && sub.Dropped() > 0 {
+		t.Log("flumetest: log buffer truncated;", sub.Dropped(), "bytes dropped (FLUMETEST_BUFFER_LIMIT=", BufferLimit(), ")")
+	}
 }
 
 // Snapshot returns a function which will revert the configuration

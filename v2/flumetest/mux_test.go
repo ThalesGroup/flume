@@ -204,12 +204,18 @@ func TestMux_WriteToBase(t *testing.T) {
 func TestMux_ResubscribeAfterUnsubscribe(t *testing.T) {
 	m := newMultiplexWriter(nil)
 
-	id1, _, _ := m.Subscribe("TestFoo")
+	id1, _, _, replaced := m.Subscribe("TestFoo")
+	if replaced {
+		t.Fatal("unexpected replacement on first subscribe")
+	}
+
 	m.Unsubscribe(id1)
 
 	assert.NotPanics(t, func() {
-		id2, sub2, existing := m.Subscribe("TestFoo")
-		require.False(t, existing)
+		id2, sub2, oldSub, replaced := m.Subscribe("TestFoo")
+		if replaced || oldSub != nil {
+			t.Fatal("unexpected replacement after unsubscribe")
+		}
 
 		_, _ = m.Write([]byte("y"))
 
@@ -244,8 +250,9 @@ func TestSubscriber_capCapturedAtSubscribeTime(t *testing.T) {
 
 	m := newMultiplexWriter(nil)
 
-	_, sub, existing := m.Subscribe("TestFoo/D4")
-	require.False(t, existing)
+	_, sub, oldSub, replaced := m.Subscribe("TestFoo/D4")
+	require.False(t, replaced)
+	require.Nil(t, oldSub)
 
 	// Now change the limit; this must not affect the already-subscribed sub.
 	SetBufferLimit(8192)
@@ -265,8 +272,10 @@ func TestUnsubscribe_clears_backing_array_refs(t *testing.T) {
 
 	ids := make([]uint64, n)
 	for i := range n {
-		id, _, existing := m.Subscribe(fmt.Sprintf("TestFoo/sub%d", i))
-		require.False(t, existing)
+		id, _, oldSub, replaced := m.Subscribe(fmt.Sprintf("TestFoo/sub%d", i))
+		if replaced || oldSub != nil {
+			t.Fatal("unexpected replacement")
+		}
 
 		ids[i] = id
 	}
@@ -391,8 +400,20 @@ func BenchmarkMuxWrite(b *testing.B) {
 	m := newMultiplexWriter(nil)
 
 	subs := make([]*subscriber, 10)
-	for i := range subs {
-		_, subs[i], _ = m.Subscribe(fmt.Sprintf("bench/sub%d", i))
+
+	for i := range 10 {
+		var (
+			id  uint64
+			sub *subscriber
+		)
+
+		id, sub, oldSub, replaced := m.Subscribe(fmt.Sprintf("bench/sub%d", i))
+		if replaced || oldSub != nil {
+			b.Fatal("unexpected replacement")
+		}
+
+		subs[i] = sub
+		_ = id
 	}
 
 	payload := []byte("benchmark log entry\n")
