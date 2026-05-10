@@ -1,6 +1,7 @@
 package flumetest
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
@@ -24,32 +25,19 @@ type mockTOldGo struct {
 
 func (m *mockTOldGo) Name() string { return m.name }
 
-// clearArtifactsFlag temporarily disables artifacts for the duration of t.
-func clearArtifactsFlag(t *testing.T) {
-	t.Helper()
+func (m *mockTOldGo) Context() context.Context { return context.Background() }
 
-	old := Artifacts()
-
-	SetArtifacts(false)
-	t.Cleanup(func() { SetArtifacts(old) })
-}
-
-// setOutputDir temporarily points the test.outputdir flag at a fresh temp directory
-// for the duration of t, and returns that directory's path.  The test is skipped
-// if the flag is not registered in this binary.
+// setOutputDir registers test.outputdir on the current flagSet (if missing),
+// points it at a fresh temp directory, and returns that directory's path.
 func setOutputDir(t *testing.T) string {
 	t.Helper()
 
-	f := flagSet.Lookup("test.outputdir")
-	if f == nil {
-		t.Skip("test.outputdir flag not registered in this test binary")
+	if flagSet.Lookup("test.outputdir") == nil {
+		flagSet.String("test.outputdir", "", "")
 	}
 
 	dir := t.TempDir()
-	old := f.Value.String()
-
 	require.NoError(t, flagSet.Set("test.outputdir", dir))
-	t.Cleanup(func() { _ = flagSet.Set("test.outputdir", old) })
 
 	return dir
 }
@@ -119,7 +107,7 @@ func (m *mockTOldGoWithOutput) Output() io.Writer { return &m.output }
 func TestGetArtifactDir(t *testing.T) {
 	t.Run("artifacts_disabled", func(t *testing.T) {
 		// No ArtifactDir() method and the -artifacts flag is not set.
-		clearArtifactsFlag(t)
+		resetGlobals(t)
 
 		m := &mockTOldGo{name: "SomeTest"}
 		dir, ok := getArtifactDir(m)
@@ -128,7 +116,9 @@ func TestGetArtifactDir(t *testing.T) {
 	})
 
 	t.Run("with_name_creates_dir_inside_outputdir", func(t *testing.T) {
-		setArtifactsFlag(t)
+		resetGlobals(t)
+		SetArtifacts(true)
+
 		outDir := setOutputDir(t)
 
 		m := &mockTOldGo{name: "TestGetArtifactDir/with_name"}
@@ -146,7 +136,9 @@ func TestGetArtifactDir(t *testing.T) {
 	})
 
 	t.Run("nice_name_uses_name_as_prefix", func(t *testing.T) {
-		setArtifactsFlag(t)
+		resetGlobals(t)
+		SetArtifacts(true)
+
 		outDir := setOutputDir(t)
 
 		m := &mockTOldGo{name: "NiceTestName"}
@@ -161,7 +153,8 @@ func TestGetArtifactDir(t *testing.T) {
 	})
 
 	t.Run("consecutive_calls_return_same_dir", func(t *testing.T) {
-		setArtifactsFlag(t)
+		resetGlobals(t)
+		SetArtifacts(true)
 		setOutputDir(t)
 
 		m := &mockTOldGo{name: "TestGetArtifactDir/consecutive"}
@@ -175,8 +168,9 @@ func TestGetArtifactDir(t *testing.T) {
 	})
 
 	t.Run("go126_native_flag_delegates_to_ArtifactDir", func(t *testing.T) {
-		setArtifactsFlag(t)
-		setNativeArtifactsFlag(t)
+		resetGlobals(t)
+		SetArtifacts(true)
+		flagSet.Bool("test.artifacts", true, "")
 
 		dir := t.TempDir()
 		m := &mockTWithArtifacts{mockT: mockT{}, artifactDir: dir}
@@ -187,8 +181,10 @@ func TestGetArtifactDir(t *testing.T) {
 	})
 
 	t.Run("go126_native_flag_false_uses_backfill", func(t *testing.T) {
-		setArtifactsFlag(t)
-		clearNativeArtifactsFlag(t)
+		resetGlobals(t)
+		SetArtifacts(true)
+		flagSet.Bool("test.artifacts", false, "")
+
 		outDir := setOutputDir(t)
 
 		m := &mockTWithArtifacts{
@@ -208,7 +204,7 @@ func TestGetArtifactDir(t *testing.T) {
 	})
 
 	t.Run("artifacts_disabled_ignores_ArtifactDir", func(t *testing.T) {
-		clearArtifactsFlag(t)
+		resetGlobals(t)
 
 		m := &mockTWithArtifacts{
 			mockT:       mockT{},
@@ -227,18 +223,10 @@ func TestGetArtifactDir(t *testing.T) {
 func TestStartOldGo(t *testing.T) {
 	var log = flume.New("TestStartOldGo")
 
-	// Restore Verbose/Disabled after each sub-test (Start reads them).
-	setup := func(t *testing.T) {
-		t.Helper()
-
-		oldV, oldD := Verbose(), Disabled()
-
-		t.Cleanup(func() { SetVerbose(oldV); SetDisabled(oldD) })
-	}
-
 	t.Run("failure_logs_artifacts_path_to_tlog", func(t *testing.T) {
-		setup(t)
-		setArtifactsFlag(t)
+		resetGlobals(t)
+		SetArtifacts(true)
+
 		outDir := setOutputDir(t)
 
 		m := &mockTOldGo{mockT: mockT{failed: true}, name: "TestStartOldGo/failure"}
@@ -262,8 +250,9 @@ func TestStartOldGo(t *testing.T) {
 	})
 
 	t.Run("success_no_artifacts_created", func(t *testing.T) {
-		setup(t)
-		setArtifactsFlag(t)
+		resetGlobals(t)
+		SetArtifacts(true)
+
 		outDir := setOutputDir(t)
 
 		m := &mockTOldGo{name: "TestStartOldGo/success"}
@@ -283,9 +272,10 @@ func TestStartOldGo(t *testing.T) {
 	})
 
 	t.Run("verbose_success_saves_artifacts", func(t *testing.T) {
-		setup(t)
+		resetGlobals(t)
 		SetVerbose(true)
-		setArtifactsFlag(t)
+		SetArtifacts(true)
+
 		outDir := setOutputDir(t)
 
 		m := &mockTOldGo{name: "TestStartOldGo/verbose_success"}
@@ -306,8 +296,8 @@ func TestStartOldGo(t *testing.T) {
 	})
 
 	t.Run("panic_logs_artifacts_path_to_tlog", func(t *testing.T) {
-		setup(t)
-		setArtifactsFlag(t)
+		resetGlobals(t)
+		SetArtifacts(true)
 		setOutputDir(t)
 
 		m := &mockTOldGo{name: "TestStartOldGo/panic"}
@@ -326,8 +316,8 @@ func TestStartOldGo(t *testing.T) {
 	})
 
 	t.Run("artifacts_path_written_to_output_when_available", func(t *testing.T) {
-		setup(t)
-		setArtifactsFlag(t)
+		resetGlobals(t)
+		SetArtifacts(true)
 		setOutputDir(t)
 
 		m := &mockTOldGoWithOutput{mockTOldGo: mockTOldGo{

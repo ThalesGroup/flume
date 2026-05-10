@@ -1,11 +1,13 @@
-BUILD_FLAGS := env("BUILD_FLAGS", "")
-TEST_FLAGS := env("TEST_FLAGS", "")
+set unstable
+
 GOLANGCI_LINT_VERSION := env("GOLANGCI_LINT_VERSION", "latest")
+GO_TEST := env("GO_TEST", if which("tang") != "" { "tang test" } else { "go test" })
+# set GOFLAGS to pass additional flags to go commands
 
 all: fmt tidy build lint test
 
 build:
-	go build {{BUILD_FLAGS}} ./...
+	go build ./...
 
 builddir:
 	mkdir -p -m 0777 build
@@ -22,18 +24,18 @@ fmt:
 test: (tests "")
 
 tests *flags:
-	go test -race {{BUILD_FLAGS}} {{TEST_FLAGS}} {{ flags }} ./...
+	{{GO_TEST}} -race {{ flags }} ./...
 
 # creates a test coverage report, and produces json test output.  useful for ci.
 cover: builddir
-	go test {{TEST_FLAGS}} -v -covermode=count -coverprofile=build/coverage.out -json ./...
+	{{GO_TEST}} -v -covermode=count -coverprofile=build/coverage.out ./...
 	go tool cover -html=build/coverage.out -o build/coverage.html
 
 builder:
 	docker compose build --pull builder
 
 docker: builder
-	docker compose run --rm builder make all cover
+	docker compose run --rm builder just all cover
 
 fish: builder
 	docker compose run --rm builder fish
@@ -49,7 +51,6 @@ update:
 
 # installs tools used during build
 tools:
-	go get -u golang.org/x/tools/cmd/cover
+	go install github.com/ansel1/tang@latest
 	sh -c "$(wget -O - -q https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh || echo exit 2)" -- -b `go env GOPATH`/bin {{GOLANGCI_LINT_VERSION}}
-
 

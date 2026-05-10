@@ -11,3 +11,10 @@ future agents from having the same issue.
 > Review the changes the agent makes to this files.  This tells you things about 
 > this project which aren't friendly to the way agents work.  You should consider
 > adjusting the project to make the instructions here unnecessary.
+
+## Build tooling: `just` vs `make`
+
+This repo has two Go modules and two different build tools:
+
+- **Root module** (`/`): uses `make` (see `Makefile`)
+- **v2 module** (`/v2`): uses `just` (see `v2/justfile`)

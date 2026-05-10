@@ -18,9 +18,12 @@ const (
 	TermHandler      = "term"
 	TermColorHandler = "term-color"
 	NoopHandler      = "noop"
+
+	// configEnvVar is the default environment variable name that ConfigFromEnv searches
+	configEnvVar = "FLUME"
 )
 
-var defaultConfigEnvVars = []string{"FLUME"}
+var defaultConfigEnvVars = []string{configEnvVar}
 
 // DefaultConfigEnvVars returns a copy of the default environment variable
 // names that ConfigFromEnv will search.
@@ -262,7 +265,7 @@ func termHandlerOptions(opts *slog.HandlerOptions) *console.HandlerOptions {
 	// todo: it would be nice if consumers could tweak this, either programatically
 	// or via configuration, but that would mean exposing the dependency on console-slog,
 	// which is currently opaque.  For now, I want to keep this opaque.  That means, if
-	// a consumer was a slightly different configuration of console-slog, they will
+	// a consumer wants a slightly different configuration of console-slog, they will
 	// have to construct it from scratch themselves.
 	if opts == nil {
 		opts = &slog.HandlerOptions{}
