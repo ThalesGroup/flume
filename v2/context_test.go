@@ -92,6 +92,30 @@ func TestContextAttrsMiddleware_appendsToRecord(t *testing.T) {
 	)
 }
 
+func TestContextAttrsMiddleware_duplicateMiddleware(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	h := NewHandler(buf, &HandlerOptions{
+		Middleware: []Middleware{
+			ContextAttrsMiddleware(),
+			ContextAttrsMiddleware(),
+			ContextAttrsMiddleware(),
+		},
+	})
+
+	ctx := ContextWithAttrs(context.Background(),
+		slog.String("request_id", "req-123"),
+	)
+
+	rec := slog.NewRecord(time.Time{}, slog.LevelInfo, "hi", 0)
+	require.NoError(t, h.Handle(ctx, rec))
+
+	// attrs should appear exactly once, not three times
+	assert.Equal(t,
+		"level=INFO msg=hi request_id=req-123\n",
+		buf.String(),
+	)
+}
+
 func TestContextAttrsMiddleware_noAttrsPassesThrough(t *testing.T) {
 	buf := bytes.NewBuffer(nil)
 	h := NewHandler(buf, &HandlerOptions{

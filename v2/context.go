@@ -17,6 +17,7 @@ import (
 // *slog.Logger everywhere.
 
 type ctxAttrsKey struct{}
+type ctxAttrsAppliedKey struct{}
 
 // ContextWithAttrs returns a new context with attrs appended to any attrs
 // already attached to ctx.  Calls are cumulative: attrs from earlier calls
@@ -56,9 +57,17 @@ func attrsFromContext(ctx context.Context) []slog.Attr {
 // Records with no context-attached attrs are passed through unchanged.
 func ContextAttrsMiddleware() Middleware {
 	return SimpleMiddlewareFn(func(ctx context.Context, record slog.Record, next slog.Handler) error {
+		// Guard against duplicate middleware: skip if another instance
+		// already appended context attrs for this Handle call.
+		if ctx.Value(ctxAttrsAppliedKey{}) != nil {
+			return next.Handle(ctx, record)
+		}
+
 		if attrs := attrsFromContext(ctx); len(attrs) > 0 {
 			record.AddAttrs(attrs...)
 		}
+
+		ctx = context.WithValue(ctx, ctxAttrsAppliedKey{}, true)
 
 		return next.Handle(ctx, record)
 	})
