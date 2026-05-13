@@ -1,6 +1,10 @@
+.*
+!.github
+!.golangci.yml
+!.gitignore
+!.dockerignore
+!.env
 vendor
 build
 go.work
 go.work.sum
-.claude/settings.local.json
-.claude/CLAUDE.local.md
