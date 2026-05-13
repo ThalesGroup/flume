@@ -359,13 +359,7 @@ func Start(t testingTB) func() {
 //	  ...
 //	}
 //
-// Capture returns a context, derived from t.Context(), with the test name injected as a "testname"
-// attribute. The returned context can be passed to loggers to add the testname attribute:
-//
-//	ctx := flumetest.Capture(t)
-//	log.DebugCtx(ctx, "my message")
-//
-// This is useful for correlating logs when running parallel tests.
+// As a convenience, returns flumetest.Context(t).
 //
 // Note: if the test panics, logs may be lost due to a golang bug:
 // https://github.com/golang/go/issues/49929
@@ -373,6 +367,18 @@ func Start(t testingTB) func() {
 // then re-run the tests.  Generally, it is an anti-pattern for tests to panic anyway.
 func Capture(t testingTB) context.Context {
 	Start(t)
+	return addTestNameToLogs(t, nil)
+}
+
+// Context returns a context, derived from t.Context(), with the test name injected as a "testname"
+// attribute. This also installs a middleware in default slog handler which adds "testname" to log
+// records.
+//
+//	ctx := flumetest.Context(t)
+//	log.DebugCtx(ctx, "my message")
+//
+// This is useful for correlating logs when running parallel tests.
+func Context(t testingTB) context.Context {
 	return addTestNameToLogs(t, nil)
 }
 
