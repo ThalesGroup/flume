@@ -626,8 +626,8 @@ func TestOrphanAncestor(t *testing.T) {
 // TestDoubleStartRollover verifies that calling Start twice for the same test
 // name (while the first is still active) triggers a rollover: the first buffer is
 // flushed immediately (to t.Log if the test is already failing, or discarded otherwise),
-// and a fresh buffer starts capturing subsequent logs. The cleanup flushes the
-// final buffer at test end.
+// and a fresh buffer starts capturing subsequent logs. The first cleanup still
+// owns the capture lifetime; later same-test cleanup functions are no-ops.
 func TestDoubleStartRollover(t *testing.T) {
 	resetGlobals(t)
 
@@ -635,28 +635,29 @@ func TestDoubleStartRollover(t *testing.T) {
 
 	mock := &mockTOldGo{mockT: mockT{failed: true}, name: "TestDoubleStartRollover/target"}
 
-	Start(mock) // first Start, registers cleanup1 for sub1
+	revert1 := Start(mock)
 
 	log.Info("before-double-start")
 
-	revert2 := Start(mock) // second Start triggers rollover, registers cleanup2 for sub2
+	revert2 := Start(mock) // second Start triggers rollover and returns a no-op cleanup
 
 	log.Info("after-double-start")
+
+	revert2()
+
 	log.Info("after-inner-revert")
 
-	// After rollover, the active subscriber is sub2 (from the second Start).
-	// Calling revert2() flushes sub2 and runs cleanup.
-	revert2()
+	revert1()
 
 	logs := mock.logs.String()
 
 	// After rollover, the old buffer was flushed immediately (on the second Start())
 	// to t.Log because the test was marked as failed.
-	// Then the new buffer captured "after-double-start" and "after-inner-revert",
-	// which are flushed by revert2().
+	// Then the fresh buffer captured "after-double-start" and "after-inner-revert",
+	// which are flushed by revert1().
 	assert.Contains(t, logs, "before-double-start", "first buffer flushed on rollover should appear")
 	assert.Contains(t, logs, "after-double-start", "new buffer should capture logs after rollover")
-	assert.Contains(t, logs, "after-inner-revert", "new buffer should capture logs before cleanup")
+	assert.Contains(t, logs, "after-inner-revert", "new buffer should keep capturing after inner cleanup")
 }
 
 // TestDoubleStartRolloverSuccess verifies rollover behavior when the test is passing:
@@ -729,7 +730,7 @@ func TestDoubleStartRolloverFailureState(t *testing.T) {
 	// Create a mock that's already marked as failed
 	mock := &mockTOldGo{mockT: mockT{failed: true}, name: "TestDoubleStartRolloverFailureState/target"}
 
-	Start(mock)
+	revert1 := Start(mock)
 
 	log.Info("before-rollover")
 
@@ -746,11 +747,42 @@ func TestDoubleStartRolloverFailureState(t *testing.T) {
 	log.Info("after-rollover")
 
 	revert2()
+	revert1()
 
 	logs := mock.logs.String()
 
 	// The final flush should contain the second buffer too.
 	assert.Contains(t, logs, "after-rollover", "second buffer should be flushed")
+}
+
+func TestDoubleStartInnerRevertKeepsCapturingUntilOuterRevert(t *testing.T) {
+	resetGlobals(t)
+
+	log := flume.New("double-start-inner-revert-test")
+
+	mock := &mockTOldGo{mockT: mockT{failed: false}, name: "TestDoubleStartInnerRevertKeepsCapturingUntilOuterRevert/target"}
+
+	revert1 := Start(mock)
+
+	log.Info("discarded-before-rollover")
+
+	revert2 := Start(mock)
+
+	log.Info("captured-before-inner-revert")
+
+	revert2()
+
+	log.Info("captured-after-inner-revert")
+
+	mock.failed = true
+
+	revert1()
+
+	logs := mock.logs.String()
+
+	assert.NotContains(t, logs, "discarded-before-rollover", "first buffer should be discarded on passing rollover")
+	assert.Contains(t, logs, "captured-before-inner-revert", "inner cleanup should not end the replacement buffer")
+	assert.Contains(t, logs, "captured-after-inner-revert", "capture should continue until the first cleanup")
 }
 
 // TestStart_releases_buffer_after_revert verifies that the per-test capture

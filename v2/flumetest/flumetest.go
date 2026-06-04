@@ -245,11 +245,8 @@ func RegisterFlags() {
 // during a subtest's window, the parent's capture is suspended and the child's
 // is active. The parent resumes when the subtest ends.
 //
-// If Start is called more than once for the same test (same t.Name()) while a
-// prior capture is still active, the second call triggers a rollover: the previous
-// buffer is flushed (or discarded if the test isn't failing yet).
-// A fresh buffer starts capturing subsequent logs. The old cleanup closure becomes
-// a no-op.
+// If Start is called more than once for the same test (same t.Name()), logs captured
+// so far are flushed or discarded, and capturing resumes.
 //
 // If Verbose is true, captured logs are flushed at test end even on success.
 // (Previously: live-streamed to t.Log during execution. That behavior has changed.)
@@ -260,11 +257,12 @@ func RegisterFlags() {
 //	  ...
 //	}
 //
-// The return value is a function which flushes the buffer, either to t.Log() if
-// the test is failing (or Verbose is set), or discarding them if the test passes.
-// This function is called automatically when the test ends, but it's sometimes
-// useful to flush early logs from setup code, then starting a new buffer for the
-// body of the test.
+// The return value is a function which terminates capturing and flushes the captured
+// logs.  This function is called automatically when the test ends, but may be used
+// to end one capture and start another mid-test.
+//
+// If Start() is called again before the first Start()'s cleanup function is called,
+// the second Start()'s cleanup function is a no-op.
 func Start(t testingTB) func() {
 	if Disabled() {
 		// no op
@@ -282,6 +280,8 @@ func Start(t testingTB) func() {
 	// now (not when its cleanup runs) because the old subscriber is being retired.
 	if replaced && oldSub != nil {
 		flushBuffer(oldSub, t, artifacts, verbose, t.Failed())
+
+		return func() {}
 	}
 
 	// since we're calling this function via t.Cleanup *and* returning
@@ -344,11 +344,8 @@ func Start(t testingTB) func() {
 // during a subtest's window, the parent's capture is suspended and the child's
 // is active. The parent resumes when the subtest ends.
 //
-// If Capture() is called more than once for the same test (same t.Name()) while a
-// prior capture is still active, the second call triggers a rollover: the previous
-// buffer is flushed (or discarded if the test isn't failing yet).
-// A fresh buffer starts capturing subsequent logs. The old cleanup closure becomes
-// a no-op.
+// If Capture() is called more than once for the same test (same t.Name()), logs captured
+// so far are flushed or discarded, and capturing resumes.
 //
 // If Verbose is true, captured logs are flushed at test end even on success.
 // (Previously: live-streamed to t.Log during execution. That behavior has changed.)

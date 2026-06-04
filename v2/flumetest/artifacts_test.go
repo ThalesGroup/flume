@@ -131,7 +131,7 @@ func TestGetArtifactDir(t *testing.T) {
 		require.NoError(t, err)
 		assert.False(t, strings.HasPrefix(rel, ".."), "dir should be inside outDir")
 
-		// The sanitised test name must appear as a path component.
+		// The sanitized test name must appear as a path component.
 		assert.Contains(t, dir, "TestGetArtifactDir__with_name")
 	})
 
