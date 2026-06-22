@@ -1,56 +1,56 @@
 set unstable
+set lists
 
 GOLANGCI_LINT_VERSION := env("GOLANGCI_LINT_VERSION", "latest")
-GO_TEST := env("GO_TEST", if which("tang") != "" { "tang test" } else { "go test" })
+GO_TEST := env("GO_TEST", if which("tang") { "tang test" } else { "go test" })
 # set GOFLAGS to pass additional flags to go commands
 
 all: fmt tidy build lint test
 
 build:
-	go build ./...
+    go build ./...
 
 builddir:
-	mkdir -p -m 0777 build
+    mkdir -p -m 0777 build
 
 lint:
-	golangci-lint run
+    golangci-lint run
 
 clean:
-	rm -rf build/*
+    rm -rf build/*
 
 fmt:
-	go fmt ./...
+    go fmt ./...
 
 test: (tests "")
 
 tests *flags:
-	{{GO_TEST}} -race {{ flags }} ./...
+    {{ GO_TEST }} -race {{ flags }} ./...
 
 # creates a test coverage report, and produces json test output.  useful for ci.
 cover: builddir
-	{{GO_TEST}} -v -covermode=count -coverprofile=build/coverage.out ./...
-	go tool cover -html=build/coverage.out -o build/coverage.html
+    {{ GO_TEST }} -v -covermode=count -coverprofile=build/coverage.out ./...
+    go tool cover -html=build/coverage.out -o build/coverage.html
 
 builder:
-	docker compose build --pull builder
+    docker compose build --pull builder
 
 docker: builder
-	docker compose run --rm builder just all cover
+    docker compose run --rm builder just all cover
 
 fish: builder
-	docker compose run --rm builder fish
+    docker compose run --rm builder fish
 
 tidy:
-	go mod tidy
+    go mod tidy
 
 update:
-	go get -u ./...
-	go mod tidy
+    go get -u ./...
+    go mod tidy
 
 ### TOOLS
 
 # installs tools used during build
 tools:
-	go install github.com/ansel1/tang@latest
-	sh -c "$(wget -O - -q https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh || echo exit 2)" -- -b `go env GOPATH`/bin {{GOLANGCI_LINT_VERSION}}
-
+    go install github.com/ansel1/tang@latest
+    sh -c "$(wget -O - -q https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh || echo exit 2)" -- -b `go env GOPATH`/bin {{ GOLANGCI_LINT_VERSION }}

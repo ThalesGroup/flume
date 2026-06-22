@@ -106,63 +106,50 @@ func nameDepth(name string) int {
 	return strings.Count(name, "/")
 }
 
-// Subscribe registers a new capture buffer for the given test name, returning the
-// old subscriber if one existed for the same test name (same-test rollover).
-// The returned bool indicates whether a replacement occurred.
+// Subscribe registers a capture buffer for the given test name, returning the
+// rolled-over buffer if one already existed for the same test name.
+// The returned bool indicates whether a rollover occurred.
 //
-// Returns: newID, newSubscriber, oldSubscriber, replaced
-//   - If a replacement occurred: newID and newSub are the new subscription, oldSub is
-//     the old subscriber (flushed by caller), replaced is true.
+// Returns: id, subscriber, oldSubscriber, replaced
+//   - If a rollover occurred: id and sub are the existing subscription, oldSub is
+//     the detached previous buffer (flushed by caller), replaced is true.
 //   - If no same-name subscriber exists: handles child/subtest ancestor suspension
 //     or new subscriber creation. oldSub is nil, replaced is false.
-func (m *multiplexWriter) Subscribe(testName string) (newID uint64, newSub, oldSub *subscriber, replaced bool) {
-	newSub = newSubscriber(BufferLimit())
-
+func (m *multiplexWriter) Subscribe(testName string) (id uint64, sub, oldSub *subscriber, replaced bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	enableNewSub := true
-
-	// Check for existing same-name active subscriber (same-test rollover case).
 	for i := range m.state.records {
 		if m.state.records[i].testName == testName {
-			// Found an existing same-name subscriber. Close it to stop new writes
-			// and return it for flushing.
-			oldSub = m.state.records[i].sub
-			oldSub.Close()
+			id = m.state.records[i].id
+			sub = m.state.records[i].sub
+			oldSub = sub.Rollover()
 
-			// new sub should have same enabled state os the sub it replaces
-			enableNewSub = m.state.records[i].enabled
-
-			// Remove the old record.
-			m.state.records = slices.Delete(m.state.records, i, i+1)
-
-			break
+			return id, sub, oldSub, true
 		}
 	}
 
-	// If no same-name subscriber, apply ancestor-suspension logic.
-	if oldSub == nil {
-		for i := range m.state.records {
-			if m.state.records[i].enabled && isAncestor(m.state.records[i].testName, testName) {
-				m.state.records[i].enabled = false
-			}
+	for i := range m.state.records {
+		if m.state.records[i].enabled && isAncestor(m.state.records[i].testName, testName) {
+			m.state.records[i].enabled = false
 		}
 	}
+
+	sub = newSubscriber(BufferLimit())
 
 	m.nextID++
-	newID = m.nextID
+	id = m.nextID
 	m.state.records = append(m.state.records, subscriberRecord{
-		id:       newID,
+		id:       id,
 		testName: testName,
 		depth:    nameDepth(testName),
-		sub:      newSub,
-		enabled:  enableNewSub,
+		sub:      sub,
+		enabled:  true,
 	})
 
 	m.rebuildSnapshot()
 
-	return newID, newSub, oldSub, oldSub != nil
+	return id, sub, nil, false
 }
 
 func (m *multiplexWriter) Unsubscribe(id uint64) {
@@ -215,6 +202,24 @@ func (m *multiplexWriter) rebuildSnapshot() {
 // A bufCap of 0 means unlimited.
 func newSubscriber(bufCap int) *subscriber {
 	return &subscriber{buf: bytes.NewBuffer(nil), bufCap: bufCap}
+}
+
+// Rollover detaches the current buffer and starts a fresh one on the same
+// subscriber so the original cleanup still owns the capture lifetime.
+func (s *subscriber) Rollover() *subscriber {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	old := &subscriber{
+		buf:     s.buf,
+		bufCap:  s.bufCap,
+		dropped: s.dropped,
+	}
+
+	s.buf = bytes.NewBuffer(nil)
+	s.dropped = 0
+
+	return old
 }
 
 // Write appends p to the subscriber's buffer. No-ops if the subscriber is closed or freed.

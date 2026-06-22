@@ -10,6 +10,7 @@ linters:
     - gocyclo
     - godot
     - godox
+    - gomodguard
     - intrange
     - lll
     - mnd
