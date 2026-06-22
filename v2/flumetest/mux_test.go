@@ -249,6 +249,33 @@ func TestMux_SameNameRolloverKeepsSubscription(t *testing.T) {
 	m.Unsubscribe(id1)
 }
 
+func TestMux_RolloverByIDIgnoresEndedSubscription(t *testing.T) {
+	m := newMultiplexWriter(nil)
+
+	id, sub, oldSub, replaced := m.Subscribe("TestFoo")
+	require.False(t, replaced)
+	require.Nil(t, oldSub)
+
+	_, _ = m.Write([]byte("before"))
+
+	rolled, ok := m.Rollover(id)
+	require.True(t, ok)
+	require.NotNil(t, rolled)
+
+	assert.Equal(t, "before", rolled.String())
+	assert.Empty(t, sub.String())
+
+	_, _ = m.Write([]byte("after"))
+
+	assert.Equal(t, "after", sub.String())
+
+	m.Unsubscribe(id)
+
+	rolled, ok = m.Rollover(id)
+	assert.False(t, ok)
+	assert.Nil(t, rolled)
+}
+
 func TestSubscriber_capRetainsMostRecentBytes(t *testing.T) {
 	const bufCap = 1024
 

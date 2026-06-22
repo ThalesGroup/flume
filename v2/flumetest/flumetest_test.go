@@ -626,8 +626,8 @@ func TestOrphanAncestor(t *testing.T) {
 // TestDoubleStartRollover verifies that calling Start twice for the same test
 // name (while the first is still active) triggers a rollover: the first buffer is
 // flushed immediately (to t.Log if the test is already failing, or discarded otherwise),
-// and a fresh buffer starts capturing subsequent logs. The first cleanup still
-// owns the capture lifetime; later same-test cleanup functions are no-ops.
+// and a fresh buffer starts capturing subsequent logs. The second cleanup acts
+// as another rollover checkpoint while the first cleanup owns the capture lifetime.
 func TestDoubleStartRollover(t *testing.T) {
 	resetGlobals(t)
 
@@ -639,7 +639,7 @@ func TestDoubleStartRollover(t *testing.T) {
 
 	log.Info("before-double-start")
 
-	revert2 := Start(mock) // second Start triggers rollover and returns a no-op cleanup
+	revert2 := Start(mock) // second Start triggers rollover and returns a checkpoint cleanup
 
 	log.Info("after-double-start")
 
@@ -653,8 +653,8 @@ func TestDoubleStartRollover(t *testing.T) {
 
 	// After rollover, the old buffer was flushed immediately (on the second Start())
 	// to t.Log because the test was marked as failed.
-	// Then the fresh buffer captured "after-double-start" and "after-inner-revert",
-	// which are flushed by revert1().
+	// Then the fresh buffer captured "after-double-start", which is flushed by
+	// revert2(). Capturing continues, so "after-inner-revert" is flushed by revert1().
 	assert.Contains(t, logs, "before-double-start", "first buffer flushed on rollover should appear")
 	assert.Contains(t, logs, "after-double-start", "new buffer should capture logs after rollover")
 	assert.Contains(t, logs, "after-inner-revert", "new buffer should keep capturing after inner cleanup")
@@ -678,7 +678,7 @@ func TestDoubleStartRolloverSuccess(t *testing.T) {
 
 	log.Info("after-double-start")
 
-	revert2() // no-op
+	revert2()
 	revert1()
 
 	logs := mock.logs.String()
@@ -755,12 +755,12 @@ func TestDoubleStartRolloverFailureState(t *testing.T) {
 	assert.Contains(t, logs, "after-rollover", "second buffer should be flushed")
 }
 
-func TestDoubleStartInnerRevertKeepsCapturingUntilOuterRevert(t *testing.T) {
+func TestDoubleStartInnerRevertActsAsRolloverCheckpoint(t *testing.T) {
 	resetGlobals(t)
 
 	log := flume.New("double-start-inner-revert-test")
 
-	mock := &mockTOldGo{mockT: mockT{failed: false}, name: "TestDoubleStartInnerRevertKeepsCapturingUntilOuterRevert/target"}
+	mock := &mockTOldGo{mockT: mockT{failed: false}, name: "TestDoubleStartInnerRevertActsAsRolloverCheckpoint/target"}
 
 	revert1 := Start(mock)
 
@@ -781,8 +781,38 @@ func TestDoubleStartInnerRevertKeepsCapturingUntilOuterRevert(t *testing.T) {
 	logs := mock.logs.String()
 
 	assert.NotContains(t, logs, "discarded-before-rollover", "first buffer should be discarded on passing rollover")
-	assert.Contains(t, logs, "captured-before-inner-revert", "inner cleanup should not end the replacement buffer")
+	assert.NotContains(t, logs, "captured-before-inner-revert", "inner cleanup should discard its buffer while the test is passing")
 	assert.Contains(t, logs, "captured-after-inner-revert", "capture should continue until the first cleanup")
+}
+
+func TestStartAfterTerminatingCleanupStartsFreshCapture(t *testing.T) {
+	resetGlobals(t)
+
+	log := flume.New("start-after-terminate-test")
+
+	mock := &mockTOldGo{mockT: mockT{failed: false}, name: "TestStartAfterTerminatingCleanupStartsFreshCapture/target"}
+
+	revert1 := Start(mock)
+
+	log.Info("discarded-before-terminate")
+
+	revert1()
+
+	log.Info("not-captured-between-starts")
+
+	revert2 := Start(mock)
+
+	log.Info("captured-after-restart")
+
+	mock.failed = true
+
+	revert2()
+
+	logs := mock.logs.String()
+
+	assert.NotContains(t, logs, "discarded-before-terminate", "passing terminated capture should be discarded")
+	assert.NotContains(t, logs, "not-captured-between-starts", "logs between captures should not be captured")
+	assert.Contains(t, logs, "captured-after-restart", "Start after termination should create a fresh capture")
 }
 
 // TestStart_releases_buffer_after_revert verifies that the per-test capture
