@@ -246,7 +246,10 @@ func RegisterFlags() {
 // is active. The parent resumes when the subtest ends.
 //
 // If Start is called more than once for the same test (same t.Name()), logs captured
-// so far are flushed or discarded, and capturing resumes.
+// so far are flushed or discarded, and capturing resumes. The cleanup function
+// returned by a later same-test Start also acts as a rollover checkpoint: it
+// flushes or discards logs captured since that Start, then continues capturing.
+// Only the first active Start's cleanup terminates the capture.
 //
 // If Verbose is true, captured logs are flushed at test end even on success.
 // (Previously: live-streamed to t.Log during execution. That behavior has changed.)
@@ -257,12 +260,11 @@ func RegisterFlags() {
 //	  ...
 //	}
 //
-// The return value is a function which terminates capturing and flushes the captured
-// logs.  This function is called automatically when the test ends, but may be used
-// to end one capture and start another mid-test.
-//
-// If Start() is called again before the first Start()'s cleanup function is called,
-// the second Start()'s cleanup function is a no-op.
+// The return value from the first active Start is a function which terminates
+// capturing and flushes the captured logs. This function is called automatically
+// when the test ends, but may be used to end one capture and start another
+// mid-test. Return values from later same-test Start calls are checkpoint
+// functions, not terminating cleanup functions.
 func Start(t testingTB) func() {
 	if Disabled() {
 		// no op
@@ -281,7 +283,26 @@ func Start(t testingTB) func() {
 	if replaced && oldSub != nil {
 		flushBuffer(oldSub, t, artifacts, verbose, t.Failed())
 
-		return func() {}
+		ran := atomic.Bool{}
+		checkpoint := func() {
+			if !ran.CompareAndSwap(false, true) {
+				return
+			}
+
+			recovered := recover()
+
+			if oldSub, ok := globalMux.Rollover(id); ok {
+				flushBuffer(oldSub, t, artifacts, verbose, recovered != nil || t.Failed())
+			}
+
+			if recovered != nil {
+				panic(recovered)
+			}
+		}
+
+		t.Cleanup(checkpoint)
+
+		return checkpoint
 	}
 
 	// since we're calling this function via t.Cleanup *and* returning
@@ -296,7 +317,7 @@ func Start(t testingTB) func() {
 		}
 
 		// Unsubscribe first so no new writes land in sub after this point.
-		// Idempotent: no-op if already removed by same-test rollover.
+		// Idempotent: no-op if already removed.
 		globalMux.Unsubscribe(id)
 
 		// make sure that if the test panics, we re-panic after cleanup
@@ -345,7 +366,10 @@ func Start(t testingTB) func() {
 // is active. The parent resumes when the subtest ends.
 //
 // If Capture() is called more than once for the same test (same t.Name()), logs captured
-// so far are flushed or discarded, and capturing resumes.
+// so far are flushed or discarded, and capturing resumes. Later same-test
+// Capture calls register checkpoint cleanup functions that flush or discard logs
+// captured since that Capture, then continue capturing. Only the first active
+// Capture cleanup terminates the capture.
 //
 // If Verbose is true, captured logs are flushed at test end even on success.
 // (Previously: live-streamed to t.Log during execution. That behavior has changed.)

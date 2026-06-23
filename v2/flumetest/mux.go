@@ -152,6 +152,23 @@ func (m *multiplexWriter) Subscribe(testName string) (id uint64, sub, oldSub *su
 	return id, sub, nil, false
 }
 
+// Rollover detaches the current buffer for an active subscription and starts a
+// fresh one. It returns false if the subscription has already ended.
+func (m *multiplexWriter) Rollover(id uint64) (*subscriber, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	idx := slices.IndexFunc(m.state.records, func(r subscriberRecord) bool {
+		return r.id == id
+	})
+
+	if idx == -1 {
+		return nil, false
+	}
+
+	return m.state.records[idx].sub.Rollover(), true
+}
+
 func (m *multiplexWriter) Unsubscribe(id uint64) {
 	m.mu.Lock()
 
